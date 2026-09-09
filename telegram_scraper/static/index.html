@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f6f7fb">
+  <title>Channel Archive</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%234b55cf'/%3E%3Cpath d='M11 13h18v5H11zm2 7h14v10H13z' fill='white'/%3E%3Cpath d='M18 23h4' stroke='%234b55cf' stroke-width='2'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/app.css">
+  <script src="/app.js" defer></script>
+</head>
+<body>
+  <a href="#main" class="skip-link">Skip to your archive</a>
+  <svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+    <symbol id="i-archive" viewBox="0 0 24 24"><path d="M4 4h16v5H4zM6 9v11h12V9M10 13h4"/></symbol>
+    <symbol id="i-post" viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="18" rx="2"/><path d="M9 8h6M9 12h6M9 16h4"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m10 9 5 3-5 3z"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zm0 0v5h5M9 12h6M9 16h6"/></symbol>
+    <symbol id="i-photo" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8" cy="9" r="1"/><path d="m3 17 5-5 4 4 3-3 6 6"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h16M4 17h16"/><circle cx="9" cy="7" r="3"/><circle cx="15" cy="17" r="3"/></symbol>
+    <symbol id="i-sync" viewBox="0 0 24 24"><path d="M20 10a8 8 0 0 0-14-5L3 8m0-5v5h5M4 14a8 8 0 0 0 14 5l3-3m0 5v-5h-5"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="16" rx="2"/><path d="M8 3v4M16 3v4M4 11h16M8 15h2M14 15h2"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 3v12m-5-5 5 5 5-5M4 15v5h16v-5"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></symbol>
+    <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14m-5-5 5 5-5 5"/></symbol>
+    <symbol id="i-chevron" viewBox="0 0 24 24"><path d="m9 6 6 6-6 6"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6"/></symbol>
+    <symbol id="i-live" viewBox="0 0 24 24"><circle cx="12" cy="12" r="2"/><path d="M7 7a7 7 0 0 0 0 10M17 7a7 7 0 0 1 0 10M4 4a11 11 0 0 0 0 16M20 4a11 11 0 0 1 0 16"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 11v6M12 7v1"/></symbol>
+  </svg>
+
+  <div class="app-shell">
+    <aside class="sidebar" aria-label="Archive navigation">
+      <a class="brand" href="/" aria-label="Channel Archive home"><span class="brand-mark"><svg class="icon"><use href="#i-archive"/></svg></span><span>Channel<br><strong>Archive</strong></span></a>
+      <div class="sidebar-heading">Your library</div>
+      <nav class="library-nav" aria-label="Library">
+        <button class="nav-item active" data-view="all" aria-current="page"><svg class="icon"><use href="#i-post"/></svg><span>All posts</span><span id="nav-all-count" class="nav-count">—</span></button>
+        <button class="nav-item" data-view="video"><svg class="icon"><use href="#i-video"/></svg><span>Videos</span><span id="nav-video-count" class="nav-count">—</span></button>
+        <button class="nav-item" data-view="photo"><svg class="icon"><use href="#i-photo"/></svg><span>Photos</span></button>
+        <button class="nav-item" data-view="file"><svg class="icon"><use href="#i-file"/></svg><span>Other files</span></button>
+      </nav>
+      <div class="sidebar-heading manage-heading">Manage archive</div>
+      <nav class="manage-nav" aria-label="Archive actions">
+        <button class="nav-item" id="range-open" aria-label="Fetch a date range" title="Fetch a date range"><svg class="icon"><use href="#i-calendar"/></svg><span>Fetch a date range</span></button>
+        <button class="nav-item" id="verify-button" aria-label="Check local files" title="Check local files"><svg class="icon"><use href="#i-shield"/></svg><span>Check local files</span></button>
+        <a class="nav-item" id="export-button" href="/api/export" download aria-label="Export posts" title="Export posts"><svg class="icon"><use href="#i-download"/></svg><span>Export posts</span></a>
+        <button class="nav-item" id="settings-open" aria-label="Settings" title="Settings"><svg class="icon"><use href="#i-settings"/></svg><span>Settings</span></button>
+      </nav>
+      <div class="sidebar-bottom">
+        <div class="connection-card"><div class="connection-title"><span class="status-dot" id="connection-dot"></span><strong id="connection-label">Opening archive…</strong></div><p id="connection-description">Your saved posts stay on this computer.</p><button id="connection-action" class="text-button">Manage connection <span aria-hidden="true">→</span></button></div>
+        <span class="local-note"><svg class="icon"><use href="#i-shield"/></svg> Stored on your computer</span>
+      </div>
+    </aside>
+
+    <main id="main" tabindex="-1">
+      <div class="notice error-notice" id="network-notice" role="status" hidden><svg class="icon"><use href="#i-info"/></svg><span id="network-message">The archive server is unavailable. Your saved files are safe.</span><button id="retry-button" class="text-button">Try again</button></div>
+      <header class="page-header">
+        <div><div class="eyebrow" id="channel-label">YOUR TELEGRAM LIBRARY</div><h1 id="page-title">All posts<span class="heading-dot">.</span></h1><p class="page-subtitle" id="page-subtitle">A lasting home for your channel’s ideas.</p></div>
+        <div class="header-actions"><button class="button secondary" id="watch-button" aria-label="Watch channel" title="Keep saving new posts while this app is running"><svg class="icon"><use href="#i-live"/></svg><span>Watch channel</span></button><button class="button primary" id="sync-button"><svg class="icon"><use href="#i-sync"/></svg><span>Sync now</span></button></div>
+      </header>
+
+      <section class="stats-grid" aria-label="Archive overview">
+        <div class="stat"><span class="stat-label">Posts archived</span><strong id="stat-total">—</strong><span class="stat-caption">Saved for the long run</span></div>
+        <div class="stat"><span class="stat-label">Videos</span><strong id="stat-videos">—</strong><span class="stat-caption">Browse, play, revisit</span></div>
+        <div class="stat"><span class="stat-label">Media posts</span><strong id="stat-media">—</strong><span class="stat-caption">Videos, photos &amp; files</span></div>
+        <div class="stat range-stat"><span class="stat-label">Archive spans</span><strong id="stat-range">—</strong><span class="stat-caption" id="stat-range-caption">Your collection starts here</span></div>
+      </section>
+
+      <details class="health-panel" id="health-panel">
+        <summary><span><svg class="icon"><use href="#i-shield"/></svg> Archive health &amp; capture history</span><span id="health-summary">Checking saved source details…</span></summary>
+        <div class="health-body">
+          <div class="health-metrics"><div><span>Source detail</span><strong id="health-source">—</strong></div><div><span>Primary media</span><strong id="health-files">—</strong></div><div><span>History coverage</span><strong id="health-coverage">Not checked</strong></div></div>
+          <p id="health-note" class="health-note"></p>
+          <div class="health-runs" id="health-runs"></div>
+          <div class="health-actions"><a id="download-evidence" class="button secondary compact" href="/api/evidence/export" download>Export source observations</a><span id="health-checksum-note"></span></div>
+          <p id="health-feedback" class="form-feedback error" role="status" hidden></p>
+        </div>
+      </details>
+
+      <section class="job-panel" id="job-panel" aria-label="Archive activity" hidden>
+        <div class="job-main"><span class="job-symbol" id="job-symbol"><svg class="icon"><use href="#i-sync"/></svg></span><div class="job-copy"><strong id="job-title">Syncing your archive</strong><p id="job-message" role="status" aria-live="polite"></p></div><button id="stop-button" class="button secondary compact">Stop safely</button></div>
+        <div class="job-progress" id="job-progress" role="progressbar" aria-label="Archive operation in progress"><span></span></div>
+        <div class="job-details" id="job-details"></div>
+        <details id="job-report" class="job-report" hidden><summary id="job-report-summary">View check results</summary><div id="job-report-body"></div></details>
+      </section>
+
+      <section class="library-section" aria-label="Archived posts">
+        <div class="library-toolbar"><label class="search-field"><svg class="icon"><use href="#i-search"/></svg><input id="search-input" type="search" placeholder="Search your archive…" aria-label="Search post text" autocomplete="off" maxlength="500"><kbd aria-hidden="true">/</kbd></label><div class="toolbar-filters"><label class="visually-hidden" for="kind-filter">Post type</label><select id="kind-filter"><option value="all">All post types</option><option value="video">Videos</option><option value="photo">Photos</option><option value="text">Text only</option><option value="file">Other files</option></select><button class="button secondary" id="date-filter-toggle" aria-expanded="false" aria-controls="date-filters"><svg class="icon"><use href="#i-calendar"/></svg><span>Dates</span></button></div></div>
+        <form id="date-filters" class="date-filters" hidden><div class="field"><label for="filter-start">From</label><input id="filter-start" type="date"></div><div class="field"><label for="filter-end">Through</label><input id="filter-end" type="date"></div><button class="button secondary compact" type="submit">Apply dates</button><button type="button" id="clear-dates" class="text-button">Clear dates</button><p>Dates filter whole days in UTC.</p><span class="form-feedback" id="date-feedback" role="status"></span></form>
+        <div class="results-meta"><span id="results-label" role="status">Loading your posts…</span><span class="sort-label">Newest first <span aria-hidden="true">↓</span></span></div>
+        <div class="archive-content" id="archive-content">
+          <div class="post-list" id="post-list" aria-label="Post list" aria-busy="true"></div>
+          <section class="empty-state" id="empty-state" hidden><div class="empty-art"><svg class="icon"><use href="#i-archive"/></svg></div><span class="eyebrow" id="empty-eyebrow">A SPACE FOR WHAT MATTERS</span><h2 id="empty-title">Your archive starts here</h2><p id="empty-description">Connect your Telegram account and choose a channel. Save its posts and videos, then revisit them anytime.</p><button class="button primary" id="empty-action">Set up your archive <svg class="icon"><use href="#i-arrow"/></svg></button></section>
+        </div>
+        <div class="pagination" id="pagination" hidden><span id="page-description"></span><div><button class="button secondary compact" id="previous-page">Previous</button><button class="button secondary compact" id="next-page">Next <span aria-hidden="true">→</span></button></div></div>
+        <footer class="library-footer"><span>Post times are shown in your local time.</span><span>Your archive is available without a Telegram connection.</span></footer>
+      </section>
+    </main>
+  </div>
+
+  <dialog id="post-dialog" class="post-dialog" aria-labelledby="post-detail-title"><div class="detail-header"><div><span class="eyebrow" id="detail-kind">ARCHIVED POST</span><h2 id="post-detail-title">Post details</h2></div><button class="icon-button" data-close="post-dialog" aria-label="Close post"><svg class="icon"><use href="#i-close"/></svg></button></div><div class="detail-body" id="post-detail-body"></div><div class="detail-footer"><span id="detail-id"></span><button class="button secondary compact" id="copy-post">Copy text</button></div></dialog>
+
+  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title"><div class="dialog-header"><div><span class="eyebrow">MAKE IT YOURS</span><h2 id="settings-title">Archive settings</h2></div><button class="icon-button" data-close="settings-dialog" aria-label="Close settings"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    <div class="dialog-body">
+      <p class="dialog-intro">One channel, saved on your computer. Your Telegram credentials and session stay here too.</p>
+      <form id="settings-form"><fieldset id="settings-fields"><legend class="section-title">Telegram API credentials</legend><p class="section-help">Use your own API ID and hash from <a href="https://my.telegram.org/apps" target="_blank" rel="noopener noreferrer">my.telegram.org <span aria-hidden="true">↗</span></a>.</p><div class="form-row"><div class="field api-id-field"><label for="api-id">API ID</label><input id="api-id" name="api_id" type="text" inputmode="numeric" pattern="[0-9]*" autocomplete="off" placeholder="e.g. 12345678"></div><div class="field"><label for="api-hash">API hash</label><input id="api-hash" name="api_hash" type="password" autocomplete="new-password" spellcheck="false" placeholder="Your API hash"><small id="hash-help">Provided with your API ID.</small></div></div><div class="field channel-field"><label for="channel">Channel</label><input id="channel" name="channel" type="text" autocomplete="off" spellcheck="false" placeholder="@channelname or a channel link"><small>Use a channel your Telegram account can access.</small></div><div class="settings-divider"></div><div class="section-title">Saving preferences</div><label class="check-setting"><input id="capture-context" name="capture_context" type="checkbox"><span><strong>Capture linked discussions and source details</strong><small>Archive accessible comments, poll details and media variants. Larger channels take longer; unavailable details are recorded.</small></span></label><label class="check-setting"><input id="download-media" name="download_media" type="checkbox"><span><strong>Download videos, photos and files</strong><small>Keep local copies so media is available offline.</small></span></label><label class="check-setting"><input id="archive-before-sync" name="archive_before_sync" type="checkbox"><span><strong>Back up before syncing</strong><small>Create a recovery archive before changing your collection.</small></span></label></fieldset><div class="save-row"><span class="form-feedback" id="settings-feedback" role="status" aria-live="polite"></span><button class="button primary" id="save-settings" type="submit">Save settings</button></div></form>
+      <section class="signin-section" aria-labelledby="signin-title"><div class="signin-heading"><h3 id="signin-title">Telegram connection</h3><span class="connection-badge" id="signin-badge">Not connected</span></div><p class="section-help" id="signin-help">Connect a saved session, or sign in with your phone number.</p><div class="signin-actions" id="signin-actions"><button id="connect-button" class="button secondary compact">Connect saved session</button><button id="phone-open" class="text-button">Sign in with phone</button></div><form id="phone-form" hidden><div class="field"><label for="phone">Phone number</label><input id="phone" type="tel" autocomplete="tel" placeholder="+41 79 123 45 67" required><small>Include your country code. Telegram may send the code in its app.</small></div><button class="button secondary compact" type="submit" id="send-code">Send login code</button></form><form id="verify-form" hidden><div class="field" id="code-field"><label for="login-code">Telegram login code</label><input id="login-code" type="text" inputmode="numeric" autocomplete="one-time-code" placeholder="Enter your code"></div><div class="field" id="password-field" hidden><label for="login-password">Two-step verification password</label><input id="login-password" type="password" autocomplete="current-password" placeholder="Your Telegram password"></div><div class="signin-actions"><button class="button primary compact" type="submit" id="verify-code">Finish sign-in</button><button id="restart-login" type="button" class="text-button">Use another number</button></div></form><p class="form-feedback" id="signin-feedback" role="status" aria-live="polite"></p></section>
+    </div>
+  </dialog>
+
+  <dialog id="range-dialog" class="range-dialog" aria-labelledby="range-title"><div class="dialog-header"><div><span class="eyebrow">FILL IN YOUR COLLECTION</span><h2 id="range-title">Fetch a date range</h2></div><button class="icon-button" data-close="range-dialog" aria-label="Close date range"><svg class="icon"><use href="#i-close"/></svg></button></div><form id="range-form" class="dialog-body"><p class="dialog-intro">Save posts from a specific period. Posts already in your archive are updated without creating duplicates.</p><div class="form-row"><div class="field"><label for="range-start">From</label><input id="range-start" type="date" required></div><div class="field"><label for="range-end">Through <span class="optional-label">(optional)</span></label><input id="range-end" type="date"><small>Leave blank to fetch a single day.</small></div></div><div class="range-note"><svg class="icon"><use href="#i-info"/></svg><p>Both dates are included. Leave the end date blank to fetch only the start day. Date ranges use UTC; displayed post times use your local time.</p></div><p id="range-feedback" class="form-feedback" role="status"></p><div class="dialog-actions"><button class="button secondary" type="button" data-close="range-dialog">Cancel</button><button class="button primary" id="range-submit" type="submit">Fetch posts <svg class="icon"><use href="#i-arrow"/></svg></button></div></form></dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  <noscript><div class="no-script">Channel Archive needs JavaScript to browse and sync posts. Enable JavaScript, then reload this page.</div></noscript>
+</body>
+</html>

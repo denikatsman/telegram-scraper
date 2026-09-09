@@ -1,0 +1,9 @@
+include main.py requirements.txt Launch.command
+include Login.py Sync.py Choose-Date-Range.py Real-time.py Simple-check.py Archive-check.py
+include README.md RELEASE_NOTES.md LICENSE
+recursive-include telegram_scraper/static *.html *.css *.js
+prune telegram_data
+prune archives
+prune work
+prune output
+global-exclude *.session *.session-journal .telegram-scraper.json .DS_Store

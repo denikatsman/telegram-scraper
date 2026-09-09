@@ -1,67 +1,114 @@
-# Telegram Post Scraper via Python
+# Channel Archive
 
-Telegram-Post-Scraper is a Python program designed to scrape posts from Telegram channels using HTTP requests and HTML parsing, rather than Telegram's API. This program is useful when creating bots or using Telegram's API is not feasible or against Telegram's terms of service.
-TG-Post-Scraper also has the capabilities to download multimedia, videos and images from a Telegram post. Atop of this, it offers the ability to save posts and the bulk data to text files for ease of access.
+A local app for saving and revisiting a Telegram channel's posts, videos, images, and files. Browse and search your saved library in your browser, play downloaded videos, sync history, capture a date range, or keep watching for new posts and edits.
 
-## Changelog
-```
-Version 3:
-Release Date: Sept 21, 2023
+Your archive stays on your computer. The interface runs at a local address and does not use a hosted service, analytics, external fonts, or a CDN. Telegram is contacted only when you connect or start a Telegram operation.
 
-Rewrote the base. Again.
-Added better error handling.
-Converted from async back to sync.
-Added CLI support.
-py(thon)(3) main.py --link / -l https://t.me/somegroup/420
+## Start the app
 
-Version 4 will include a graphical user interface as well as a settings handler.
-Much love, enjoy y'all ♥
+Requires Python 3.10 or newer on macOS or Linux.
+
+```sh
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+python main.py
 ```
 
+On macOS, after setup you can double-click `Launch.command`. Keep its Terminal window open while the app runs. Press **Ctrl+C** in that window to stop it safely. The browser app normally opens at `http://127.0.0.1:8765`.
 
-## Features
+If that port is busy:
 
-- Scrapes posts from Telegram channels using HTTP requests and HTML parsing.
-- Can copy the content of the posts, and download media such as images and videos.
-- Supports scraping multiple links in one session. Seperate links at the beginning of the program with commas. (t.me/groupID/333,t.me/someotherID/444,t.me/anotherOne/555)
-- Does not require a bot or an API key.
-- Useful for situations where using Telegram's API or creating a bot is not feasible or against Telegram's terms of service.
-
-## Requirements
-
-To use Telegram-Post-Scraper, you need to have Python 3 installed on your system, as well as the following Python packages:
-This program was built on Python 3.10.10 64bit
-
-- beautifulsoup4==4.11.1
-- html2text==2020.1.16
-- pyperclip==1.8.2
-- Requests==2.28.2
-
-You can install these packages using pip by running the following command:
-
-```
-pip install -r requirements.txt
+```sh
+python main.py serve --port 0
 ```
 
-## Usage
+For command-line installation, `python -m pip install .` also installs the `channel-archive` command. Installed copies use `~/.local/share/channel-archive`; source checkouts use their project folder. Use `--data-dir /path/to/library` before the command, or set `TELEGRAM_ARCHIVE_HOME`, to choose another location.
 
-To use Telegram-Post-Scraper, you just provide it with a URL of a Telegram post.
+## Connect a channel
+
+1. Open **Settings**. Enter your own API ID and API hash from [Telegram's API development tools](https://my.telegram.org).
+2. Enter the channel's `@username`, `https://t.me/...` link, or numeric ID. For private channels, your Telegram account must already have access. The app does not join channels for you.
+3. Save settings, then connect your saved session or sign in with your phone number. Telegram may send the code inside Telegram rather than by SMS. If enabled on your account, your two-step verification password is requested next.
+4. Start **Sync all posts**. You can browse saved posts while it runs. **Stop** keeps completed posts and downloads; another sync checks history again and retries missing attachments.
+
+An existing local library is available before signing in. API credentials are stored privately in `.telegram-scraper.json`; passwords and login codes are not saved there. The reusable Telegram login is stored in `telegram_scraper.session`. Keep both files private. They, your media, backups, and local work files are excluded from Git and distribution packages.
+
+Each data folder belongs to one channel. Use a separate `--data-dir` folder for another channel so overlapping Telegram message IDs cannot mix libraries. An old archive without channel metadata needs its original configured channel identity before sync can safely attach it. This checkout's existing configuration has been preserved locally.
+
+## Everyday use
+
+- **Library:** search post text or IDs, filter by media type or UTC date, and open a post to read it or play its downloaded video. Dates on posts display in your local timezone. The date filter and scraper range use whole UTC calendar days, including the last selected day.
+- **Sync:** checks all accessible history, saves new posts, records edits, and retries missing or incomplete files. There is no 5,000-message cap. It preserves previously saved posts even if Telegram later deletes them.
+- **Date range:** saves a selected period. An empty end date means the same day as the start date.
+- **Watch:** catches up first, then saves incoming posts and edits until stopped. Keep the app running and the computer awake with an internet connection.
+- **Verify archive:** reads saved media and backup contents, checks ZIP integrity, compares previously archived posts and media, and reports problems. Text changes are reported separately because they can be legitimate Telegram edits. A passing check shows consistency of the files examined; it does not prove Telegram history is complete or identify the cause of a change.
+- **Export JSON:** downloads the current saved post index, including stored metadata. Media files remain in the library's media folder.
+- **Archive health:** separates legacy posts from captured source records, shows available files and persistent scrape receipts, and links to complete source exports. Each post has a source inspector and downloads for additional captured media.
+
+Videos play when their format is supported by your browser. Use the file's download link to open other formats in a local player. Missing media stays visible and can be retried by syncing with media downloads enabled.
+
+## What a scrape preserves
+
+New captures save the full fields of each returned Telegram object and Telethon's serialized TL representation **before** processing the post or downloading its media. Binary fields in JSON use an explicit base64 representation. Serialized TL objects are not the original encrypted network packets. The source database retains distinct observations, including counter/reaction changes that would not create a visible text revision, and records each observation's run and capture time.
+
+History is requested in pages without a message cap. Each scan records its scope, initial top message ID, Telegram's initial count, page responses, returned users/chats, durable progress and final outcome. Full-history counts are reconciled; date-range scans do not mistake the channel-wide count for the range's expected size. Repeated cursors, unsupported response types, failed requests and count discrepancies prevent an unqualified completion claim. Arrivals after the initial anchor belong to the next scan or Watch.
+
+With **Capture linked discussions and source details** enabled (the default), the app also requests full channel metadata, returned related entities, paginated linked comments and replies, poll results and accessible voter pages, reaction snapshots and accessible reaction-identity pages. It inventories and downloads supported photo sizes, video alternatives, document thumbnails, covers, comment attachments and channel-avatar sizes. Each additional download has an immutable receipt with its size, SHA256 hash and source relationship. This deeper capture can take substantially longer and use more disk space than downloading the main video alone.
+
+This is an archive of **what Telegram returns to the signed-in account**, not a guarantee of every message that has ever existed. Deleted or inaccessible messages cannot be reconstructed. History can change during a scan; Telegram does not provide an atomic snapshot. Anonymous voters, restricted reaction identities, paid previews, unsupported binary forms and story references that are not fetched are explicitly recorded as limitations. The app never casts votes, buys content or joins channels. These boundaries follow the returned API objects; see Telegram's [history method](https://core.telegram.org/method/messages.getHistory), [discussion API](https://core.telegram.org/api/discussion) and [file representations](https://core.telegram.org/api/files).
+
+Your existing simplified records are **legacy records** until a new sync enriches them. The app cannot recover fields that the old scripts did not save and Telegram no longer exposes. Read-only browsing does not manufacture source metadata for old posts.
+
+**Download source observations** exports all saved raw objects, occurrence metadata, run events and coverage receipts. A post's **source preview** limits both observations and their occurrence histories; use **Export all source data** for every saved entry. JSON exports retain 64-bit Telegram identifiers exactly. Use an integer-preserving JSON reader for analysis. Exports contain private channel/account metadata, but not your API hash, phone login code or two-step password.
+
+## Storage and recovery
+
+```text
+.telegram-scraper.json          Private settings
+telegram_scraper.session        Private Telegram login session
+telegram_data/
+  messages_all.json             Saved posts, metadata and prior edits
+  channel.json                  Channel identity, established on sync
+  evidence.sqlite3              Immutable source observations and scrape receipts
+  media/                        Downloaded attachments
+    variants/                   Additional media and immutable index receipts
+archives/                       Full snapshots taken before sync
 ```
-1. Open Command Prompt, Powershell, or Terminal.
-2. Run "py(thon3) main.py"
-2a. (For CLI usage) py(thon3) main.py -l OR --link http://t.me/somegroup/ID
-3. Enter your Telegram post URL. (Format: https://t.me/SOMEGROUP/NUMERICID)
-3a. You can find the link of a Telegram post by right clicking it and pressing "Copy Link".
-4. Follow through the prompts in the console window.
 
+Settings are saved when you press Save. Posts are checkpointed during syncing and on cancellation. A failed or unreadable message index is never treated as an empty library and overwritten. Completed files are published from separate temporary downloads, without overwriting old attachments. One running app owns a library at a time.
+
+Source observations commit independently before derived post processing. Following a sudden process crash, the reading index may lag behind the source database; committed raw pages remain in the complete source export. A later sync scans history again and reuses verified downloads; it does not silently assume the interrupted scan was complete. Unfinished receipts remain visibly interrupted. Startup recovers interrupted SQLite transactions under the library lock. Unsupported or damaged source databases stop new capture rather than being replaced.
+
+**Back up before sync** is on by default. Each snapshot includes the existing post index, source database, media and variant receipts, including raw-only evidence from a prior interrupted run. Large libraries need enough free space for another full copy. Snapshots may take time. They are completed before history/content capture starts; the new attempt's initial receipt is already committed and quiescent during copying. Failed or interrupted snapshots are not presented as usable backups. The app does not automatically delete old backups. You can switch off future snapshots in Settings, but keep another backup of important archives.
+
+To recover a damaged library: stop the app, preserve the current folder, and extract a known-good backup into a **separate** folder. Check its `messages_all.json`, `evidence.sqlite3` and media before replacing anything. If a SQLite journal is present after a crash, keep it with its database. Do not delete old backups solely because a consistency check passed.
+
+For a fresh machine, copy the library folder and install the app. Legacy relative media paths are supported; paths pointing outside the chosen library are rejected. Keep a separate copy of original exports if exact original JSON formatting matters; subsequent saves retain fields but normalize order and formatting.
+
+## Command line
+
+```sh
+python main.py login
+python main.py sync
+python main.py range --start 2025-01-01 --end 2025-01-31
+python main.py watch
+python main.py verify
+python main.py check
+python main.py --data-dir /path/to/another-library serve
 ```
 
-## Contributing
+The original `Login.py`, `Sync.py`, `Choose-Date-Range.py`, `Real-time.py`, `Archive-check.py`, and `Simple-check.py` names remain as compatibility entry points. `Simple-check.py` now shows exactly the first five **saved** posts, without fetching thousands of messages from Telegram. Running a check never creates a backup or changes the library.
 
-If you find any bugs or have suggestions for improvements, feel free to create an issue or submit a pull request.
+If Telegram limits requests, the app displays the wait and continues when allowed. If a session expires or channel access changes, reconnect in Settings. If an attachment is unavailable, the post remains saved and the result identifies the failed download. The app can only archive history and media Telegram makes accessible to your account.
 
+## Development
 
-## Donations
-Was this program useful to you? 
-If you want to donate ♥:
- > BTC: bc1q0r6acpfujrsc7sw42k0jxya43xmyq66emx5xlr
+```sh
+python -m pip install -e '.[test]'
+python -m pytest -q
+```
+
+Tests use temporary libraries and fake Telegram clients. They do not sign in, message anyone, or mutate your actual archive. See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the current validation record and limits.
+
+This project uses [Telethon](https://docs.telethon.dev/en/stable/) and retains the original BSD 2-Clause license. It is an independent tool, not affiliated with Telegram or the Inner Circle Trader.

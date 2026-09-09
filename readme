@@ -1,0 +1,6 @@
+Channel Archive now has one shared application and a local browser interface.
+
+Start with: python3 main.py
+
+For installation, sign-in, sync, backups, recovery, and command-line usage,
+see README.md. The original script names remain compatible entry points.
