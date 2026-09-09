@@ -1,6 +1,18 @@
-# Channel Archive 1.1.0 — validation and handoff
+# Channel Archive 1.2.0 — validation and handoff
 
-Implemented September 7–8, 2026. This is a local browser application for macOS and Linux, distributed as Python source and an installable package. It is not a signed, standalone macOS application or a hosted service.
+## 1.2 Mac app and guided setup
+
+Implemented September 9, 2026. A native macOS window now starts and displays the local interface without a Terminal window. The app uses an available port, so another local tool cannot occupy its address. It reuses an authenticated server only for the same library; quitting stops an owned server safely and leaves a reused server running. Private discovery files are excluded from Git and packages and removed on shutdown.
+
+The setup card shows the three steps: API details, channel and Telegram sign-in. Settings explain where to obtain an API ID/hash and why a BotFather bot token cannot be used. Sign-in controls stay disabled until credentials are saved, and guide the user through phone number, code and optional two-step password. Saving preferences are collapsed to keep login accessible; the dialog's Close button stays visible while scrolling. The Mac app includes Settings, Show Archive Folder, standard keyboard editing and native export/download dialogs. Completed download replacements preserve the previous destination file.
+
+Validation: **176 automated tests and 30 subtests passed**, including real backend start, offline first run, private server discovery, second-window reuse, shutdown/relaunch and damaged-settings preservation. Scripted Chromium passed guided setup, invalid-code feedback, resumed two-step login, saved settings, fixture sync, Watch/Stop and widths 320–1280 without page errors. Native WebKit opened the real bundled interface on an isolated empty library and shut down without creating a Telegram session. A second native check clicked Export posts, completed a native download, retained an exact 64-bit ID and preserved the previous destination file. Native reuse kept the original server running when the window closed. A clean virtual environment installed the 1.2 wheel and served its packaged UI offline; both package formats and the Mac bundle excluded saved credentials and personal data.
+
+The bundle is built for the development Mac, uses its selected Python installation and library folder, and contains no personal settings, Telegram session, posts or media. It has a local ad-hoc signature, not Developer ID signing or notarization. It is not a self-contained installer for another Mac. No real login code was requested during this GUI pass; live Telegram sign-in and capture remain unverified. Earlier API credentials are saved locally, but the last live check required account authorization.
+
+The earlier source commit was pushed to the owner's fork. Git now uses that fork as `origin` and the original project as `upstream`; the branch comparison base is `origin/main`. The large comparison against the original project was distinct from uncommitted work. Pre-existing deletions of `.gitattributes`, the issue templates and the Windows launcher remain outside this GUI change.
+
+The remaining sections retain the earlier implementation and validation history. The browser interface is also available on macOS and Linux as Python source and an installable package.
 
 ## 1.1 preservation pass
 
@@ -22,7 +34,7 @@ The historical validation below documents the first product pass. Live Telegram 
 
 Final 1.1 checks: the live library again passed read-only verification of **1,406 posts, 379 media files and 25 ZIP backups**, with zero issues in 135.93 seconds. The index SHA256 and media paths/sizes remain unchanged. It still contains legacy records and no new source observations. Both 1.1 distributions include all 13 current package source/static files and exclude the private archive and saved API hash. A clean virtual environment installed the 1.1 wheel, launched the app, served its packaged UI offline and shut down successfully.
 
-At the end, the running 1.1 app attempted the configured ICT **Telegram** connection. API credentials were present, but Telegram returned `authorized: false`; the actual capture endpoint refused the request with HTTP400 and a sign-in message. **Zero new posts were scraped**; the library remains at 1,406. No login code was requested. The updated app remains available at `http://127.0.0.1:8765`. The result is saved in `work/final-live-capture-attempt.json`. X/Twitter scraping was not added; “tweets” was interpreted in the context of this Telegram-channel task.
+At the end, the running 1.1 app attempted the configured ICT **Telegram** connection. API credentials were present, but Telegram returned `authorized: false`; the actual capture endpoint refused the request with HTTP400 and a sign-in message. **Zero new posts were scraped**; the library remains at 1,406. No login code was requested. That historical run used `http://127.0.0.1:8765`; the Mac app now chooses its own available port. The result is saved in `work/final-live-capture-attempt.json`. X/Twitter scraping was not added; “tweets” was interpreted in the context of this Telegram-channel task.
 
 ## Product changes
 
@@ -55,6 +67,6 @@ Local evidence is in the Git-ignored `work/` folder and `output/playwright/`. Th
 
 A bounded live status check using an isolated copy of the saved Telegram session returned **not authorized**. No live channel-history or fresh media-download test could run. Reconnect in Settings, then run a small date range with media downloads enabled before calling a live Telegram release accepted. Login codes and passwords were tested only through fake responses; no real code was requested.
 
-No signed/notarized macOS bundle, Windows support, clean-Mac acceptance, Safari/Firefox playback pass, or unattended long-running live Watch soak is claimed. Browser media support varies; the original-file download remains available. The interface is intended for one local user, not exposure through a public network or reverse proxy. Large libraries require space for full backup copies; backups are never silently pruned.
+No Developer ID signed or notarized macOS bundle, Windows support, clean-Mac acceptance, Safari/Firefox playback pass, or unattended long-running live Watch soak is claimed. Browser media support varies; the original-file download remains available. The interface is intended for one local user, not exposure through a public network or reverse proxy. Large libraries require space for full backup copies; backups are never silently pruned.
 
-The implementation pass did not create a Git commit, remote publication, or release tag. Publishing this source does not establish live Telegram acceptance. Pre-existing local removals of the old issue templates, `.gitattributes`, and Windows launcher are outside the app changes. The original BSD license was restored for redistribution attribution.
+That first implementation pass did not create a Git commit, remote publication, or release tag; the source was subsequently committed and pushed to the owner's fork. Publishing this source does not establish live Telegram acceptance. Pre-existing local removals of the old issue templates, `.gitattributes`, and Windows launcher are outside the app changes. The original BSD license was restored for redistribution attribution.

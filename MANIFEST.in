@@ -6,4 +6,6 @@ prune telegram_data
 prune archives
 prune work
 prune output
-global-exclude *.session *.session-journal .telegram-scraper.json .DS_Store
+global-exclude *.session *.session-journal .telegram-scraper.json .telegram-scraper-ui.json .DS_Store
+recursive-include macos *.swift
+include tools/build_macos_app.py

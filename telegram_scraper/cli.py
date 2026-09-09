@@ -24,6 +24,7 @@ def parser():
     serve = sub.add_parser("serve", help="open the local archive interface (default)")
     serve.add_argument("--port", type=int, default=8765, help="local port; use 0 for an available port")
     serve.add_argument("--no-browser", action="store_true", help="print the local address without opening a browser")
+    serve.add_argument("--desktop", action="store_true", help=argparse.SUPPRESS)
     sub.add_parser("login", help="connect a saved session or sign in interactively")
     sub.add_parser("sync", help="sync all accessible history and repair missing media")
     dates = sub.add_parser("range", help="sync an inclusive range of UTC calendar dates")
@@ -52,6 +53,12 @@ def main(argv=None):
     server = None
     stack = ExitStack()
     try:
+        from .instance import announce, discover
+        if command == "serve" and getattr(args, "desktop", False):
+            existing = discover(root)
+            if existing:
+                print(json.dumps({"event": "ready", "url": existing["url"], "owns_server": False}), flush=True)
+                return 0
         from .server import LocalServer, Runtime, date_bounds
         runtime = Runtime(root)
         # One process owns the session/library; a second app exits with a clear message.
@@ -68,11 +75,14 @@ def main(argv=None):
                 server = LocalServer(("127.0.0.1", port), runtime)
             except OSError as exc:
                 raise ValueError(f"Port {port} is already in use. Try: python3 main.py serve --port 0") from exc
-            address = f"http://127.0.0.1:{server.server_address[1]}"
-            print(f"Channel Archive {__version__}\nOpen {address}\nData folder: {root}\nPress Ctrl+C here to stop the app.", flush=True)
-            if not getattr(args, "no_browser", False):
-                webbrowser.open(address)
-            server.serve_forever(poll_interval=0.2)
+            with announce(root, server) as address:
+                if getattr(args, "desktop", False):
+                    print(json.dumps({"event": "ready", "url": address, "owns_server": True}), flush=True)
+                else:
+                    print(f"Channel Archive {__version__}\nOpen {address}\nData folder: {root}\nPress Ctrl+C here to stop the app.", flush=True)
+                    if not getattr(args, "no_browser", False):
+                        webbrowser.open(address)
+                server.serve_forever(poll_interval=0.2)
             return 0
         if command == "check":
             if runtime.library_error:

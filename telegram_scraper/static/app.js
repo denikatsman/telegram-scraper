@@ -155,6 +155,7 @@
         const next = await api("/api/state", undefined, { timeout: 12000 });
         const recovered = !online;
         state = next;
+        document.documentElement.dataset.appReady = "true";
         online = true;
         stateFailures = 0;
         $("network-notice").hidden = true;
@@ -220,11 +221,12 @@
         const savedStep = String(state.connection?.step || "").toLowerCase();
         if (savedStep === "code" || savedStep === "password") loginStep = savedStep;
       }
-      text("signin-help", settingsDirty ? "Save your settings before connecting to Telegram." : "Connect a saved session, or sign in with your phone number.");
+      text("signin-help", settingsDirty ? "Save your settings before connecting to Telegram." : !settings.api_id || !settings.api_hash_set ? "Save your API ID and API hash above to enable sign-in." : loginStep === "password" ? "Enter the two-step verification password you set in Telegram." : loginStep === "code" ? "Enter the latest login code Telegram sent you." : "Connect a saved session, or sign in with your phone number.");
       renderLoginStep();
     }
     renderJob();
     renderHealth();
+    renderSetup();
     renderControls();
     if (postsLoaded && totalResults === 0) showEmpty(hasFilters() ? "filtered" : "new");
   }
@@ -234,6 +236,8 @@
     const unavailable = !state || !online;
     const starting = pending.has("job");
     const authPending = pending.has("auth");
+    const needsCredentials = !state?.settings?.api_id || !state?.settings?.api_hash_set;
+    $("setup-action").disabled = unavailable || running || starting || authPending || pending.has("settings");
     ["sync-button", "watch-button", "range-open", "verify-button"].forEach((id) => { $(id).disabled = unavailable || running || starting || pending.has("settings") || authPending; });
     $("watch-button").setAttribute("aria-pressed", String(running && (state?.job?.mode === "watch" || state?.job?.phase === "watching")));
     $("stop-button").disabled = unavailable || pending.has("stop") || !running || state?.job?.status === "stopping" || state?.job?.phase === "stopping";
@@ -241,7 +245,7 @@
     $("settings-fields").disabled = unavailable || running || pending.has("settings") || authPending;
     $("save-settings").disabled = unavailable || running || pending.has("settings") || authPending;
     text("save-settings", pending.has("settings") ? "Saving…" : "Save settings");
-    ["connect-button", "phone-open", "send-code", "verify-code", "restart-login"].forEach((id) => { $(id).disabled = unavailable || running || authPending || pending.has("settings") || settingsDirty; });
+    ["connect-button", "phone-open", "send-code", "verify-code", "restart-login"].forEach((id) => { $(id).disabled = unavailable || running || authPending || pending.has("settings") || settingsDirty || needsCredentials; });
     ["phone", "login-code", "login-password"].forEach((id) => { $(id).disabled = unavailable || running || authPending || settingsDirty; });
     text("connect-button", authPending ? "Connecting…" : "Connect saved session");
     text("send-code", authPending ? "Sending…" : "Send login code");
@@ -252,6 +256,35 @@
     $("retry-button").disabled = pending.has("retry");
     $("export-button").setAttribute("aria-disabled", String(unavailable || pending.has("export") || !state?.library?.total));
     $("empty-action").disabled = $("empty-action").dataset.action === "new" && Boolean(running || starting || unavailable);
+  }
+
+  function renderSetup() {
+    const settings = state?.settings || {};
+    const credentials = Boolean(settings.api_id && settings.api_hash_set);
+    const channel = Boolean(settings.channel);
+    const connected = Boolean(state?.connection?.authorized);
+    $("setup-panel").hidden = credentials && channel && connected;
+    [["setup-credentials", credentials], ["setup-channel", channel], ["setup-login", connected]].forEach(([id, done]) => $(id).classList.toggle("done", done));
+    text("setup-title", !credentials ? "Set up your Telegram archive" : !channel ? "Choose the channel to save" : "Sign in to start saving posts");
+    text("setup-description", !credentials ? "Use your API ID and API hash from my.telegram.org. Then choose a channel and sign in with your Telegram account." : !channel ? "Your API details are saved. Add the channel’s username or link in Settings." : "Your API details and channel are already saved. Connect your Telegram account to start scraping; your existing archive is available offline.");
+    text("setup-action", !credentials ? "Add API details" : !channel ? "Choose channel" : "Connect Telegram");
+  }
+
+  async function openSetup() {
+    openSettings();
+    if (!state?.settings?.api_id || !state?.settings?.api_hash_set) {
+      $("api-id").focus();
+    } else if (!state.settings.channel) {
+      $("channel").focus();
+    } else if (!state.connection?.authorized) {
+      document.querySelector(".signin-section").scrollIntoView({ block: "start" });
+      if (["code", "password"].includes(loginStep)) {
+        $(loginStep === "code" ? "login-code" : "login-password").focus();
+      } else {
+        await connect();
+        if (loginStep === "phone") $("phone").focus();
+      }
+    }
   }
 
   function renderHealth() {
@@ -901,6 +934,7 @@
   $("previous-page").addEventListener("click", () => { filters.offset = Math.max(0, filters.offset - filters.limit); loadPosts({ focus: true }); });
   $("next-page").addEventListener("click", () => { if (filters.offset + filters.limit < totalResults) { filters.offset += filters.limit; loadPosts({ focus: true }); } });
   $("settings-open").addEventListener("click", openSettings);
+  $("setup-action").addEventListener("click", openSetup);
   $("connection-action").addEventListener("click", openSettings);
   $("settings-form").addEventListener("submit", saveSettings);
   $("settings-fields").addEventListener("input", () => {

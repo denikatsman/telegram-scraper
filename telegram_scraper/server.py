@@ -515,6 +515,10 @@ class Handler(BaseHTTPRequestHandler):
                 return
             if path == "/api/state":
                 self.json_response(self.app.call(self.app.state()) | {"csrf_token": self.server.token})
+            elif path == "/api/instance":
+                import os
+                from . import __version__
+                self.json_response({"app": "channel-archive", "root": str(self.app.root), "pid": os.getpid(), "version": __version__})
             elif path == "/api/posts":
                 params = {key: value[-1] for key, value in parse_qs(urlparse(self.path).query).items()}
                 self.json_response(self.app.call(self.app.posts(params)))

@@ -6,6 +6,9 @@ __pycache__/
 .env
 .telegram-scraper.json
 .telegram-scraper.lock
+.telegram-scraper-ui.json
+.ui-instance-*
+*.app/
 *.session*
 telegram_data/
 archives/

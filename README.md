@@ -1,21 +1,32 @@
 # Channel Archive
 
-A local app for saving and revisiting a Telegram channel's posts, videos, images, and files. Browse and search your saved library in your browser, play downloaded videos, sync history, capture a date range, or keep watching for new posts and edits.
+A local app for saving and revisiting a Telegram channel's posts, videos, images, and files. Browse and search your saved library in a Mac app or browser, play downloaded videos, sync history, capture a date range, or keep watching for new posts and edits.
 
 Your archive stays on your computer. The interface runs at a local address and does not use a hosted service, analytics, external fonts, or a CDN. Telegram is contacted only when you connect or start a Telegram operation.
 
 ## Start the app
 
-Requires Python 3.10 or newer on macOS or Linux.
+On macOS, open **Channel Archive.app**. The setup card walks you through API details, choosing your channel and signing into Telegram. You can browse an existing library before connecting. No Terminal window is needed for everyday use.
+
+The Mac app starts its local server on an available port and closes it safely when you quit. If the same library is already open in a browser server, the app reuses that server and leaves it running when you close the window. **File → Show Archive Folder** opens your data folder; **⌘,** opens Settings.
+
+### Build the Mac app once
+
+Requires macOS 12 or newer, Python 3.10 or newer and Xcode command-line tools. From this checkout:
 
 ```sh
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python main.py
+python tools/build_macos_app.py --output "$HOME/Applications/Channel Archive.app"
+open "$HOME/Applications/Channel Archive.app"
 ```
 
-On macOS, after setup you can double-click `Launch.command`. Keep its Terminal window open while the app runs. Press **Ctrl+C** in that window to stop it safely. The browser app normally opens at `http://127.0.0.1:8765`.
+The bundle contains the interface and backend code, and points to the Python installation and library folder selected when it was built. Keep that Python environment and library in place; rebuild after moving them or updating the source. To select another library, add `--data-dir /path/to/library` to the build command. No settings, Telegram session, posts or media are copied into the app. This is a local build, not a self-contained or notarized installer for other Macs.
+
+### Browser or command line
+
+On macOS or Linux, install the Python requirements above, then run `python main.py`. On macOS, `Launch.command` is also available. Keep its Terminal window open while the browser app runs; press **Ctrl+C** there to stop it safely. The browser app normally opens at `http://127.0.0.1:8765`.
 
 If that port is busy:
 
@@ -27,10 +38,10 @@ For command-line installation, `python -m pip install .` also installs the `chan
 
 ## Connect a channel
 
-1. Open **Settings**. Enter your own API ID and API hash from [Telegram's API development tools](https://my.telegram.org).
+1. Click **Add API details** (or open **Settings**). Enter your own API ID and API hash from [Telegram's API development tools](https://my.telegram.org/apps). This app signs into your Telegram account; a BotFather bot token cannot be used.
 2. Enter the channel's `@username`, `https://t.me/...` link, or numeric ID. For private channels, your Telegram account must already have access. The app does not join channels for you.
-3. Save settings, then connect your saved session or sign in with your phone number. Telegram may send the code inside Telegram rather than by SMS. If enabled on your account, your two-step verification password is requested next.
-4. Start **Sync all posts**. You can browse saved posts while it runs. **Stop** keeps completed posts and downloads; another sync checks history again and retries missing attachments.
+3. Save settings, then click **Connect Telegram**. The app checks your saved session and shows phone-number sign-in if needed. Telegram may send the code inside Telegram rather than by SMS. If enabled on your account, your two-step verification password is requested next.
+4. Click **Sync now**. You can browse saved posts while it runs. **Stop** keeps completed posts and downloads; another sync checks history again and retries missing attachments.
 
 An existing local library is available before signing in. API credentials are stored privately in `.telegram-scraper.json`; passwords and login codes are not saved there. The reusable Telegram login is stored in `telegram_scraper.session`. Keep both files private. They, your media, backups, and local work files are excluded from Git and distribution packages.
 
@@ -43,7 +54,7 @@ Each data folder belongs to one channel. Use a separate `--data-dir` folder for 
 - **Date range:** saves a selected period. An empty end date means the same day as the start date.
 - **Watch:** catches up first, then saves incoming posts and edits until stopped. Keep the app running and the computer awake with an internet connection.
 - **Verify archive:** reads saved media and backup contents, checks ZIP integrity, compares previously archived posts and media, and reports problems. Text changes are reported separately because they can be legitimate Telegram edits. A passing check shows consistency of the files examined; it does not prove Telegram history is complete or identify the cause of a change.
-- **Export JSON:** downloads the current saved post index, including stored metadata. Media files remain in the library's media folder.
+- **Export posts:** downloads the current saved post index, including stored metadata. Media files remain in the library's media folder.
 - **Archive health:** separates legacy posts from captured source records, shows available files and persistent scrape receipts, and links to complete source exports. Each post has a source inspector and downloads for additional captured media.
 
 Videos play when their format is supported by your browser. Use the file's download link to open other formats in a local player. Missing media stays visible and can be retried by syncing with media downloads enabled.
@@ -66,6 +77,7 @@ Your existing simplified records are **legacy records** until a new sync enriche
 
 ```text
 .telegram-scraper.json          Private settings
+.telegram-scraper-ui.json       Private running-app connection; removed on shutdown
 telegram_scraper.session        Private Telegram login session
 telegram_data/
   messages_all.json             Saved posts, metadata and prior edits

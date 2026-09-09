@@ -120,6 +120,10 @@ def test_localhost_access_and_csrf_required(application):
     assert request(application, "/api/jobs", "POST", {"mode": "verify"}, headers={"X-CSRF-Token": "wrong"})[0] == 403
     assert request(application, "/api/jobs", "POST", {"mode": "verify"}, headers={"Origin": "https://evil.test"})[0] == 403
     assert request(application, "/api/jobs", "POST", [], headers={})[0] == 400
+    assert request(application, "/api/instance", authenticated=False)[0] == 403
+    identity = payload(application, "/api/instance")
+    assert identity["app"] == "channel-archive"
+    assert identity["root"] == str(application[0].root)
 
 
 def test_host_must_be_loopback(application):
