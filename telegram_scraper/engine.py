@@ -144,8 +144,9 @@ class TelegramService:
     TRANSIENT_RETRIES = 3
     RETRY_DELAYS = (1, 3, 8)
 
-    def __init__(self, root: Path, settings: dict, store: Any, report: Callable[[dict], Any]):
+    def __init__(self, root: Path, settings: dict, store: Any, report: Callable[[dict], Any], *, account_root: Path | None = None):
         self.root = Path(root).resolve()
+        self.account_root = Path(account_root).resolve() if account_root is not None else self.root
         self.settings = settings
         self.store = store
         self.report = report
@@ -393,12 +394,12 @@ class TelegramService:
                 from telethon import TelegramClient
             except ImportError:
                 raise UserError("Telegram support is not installed. Run the app's setup command and try again.") from None
-            self._client = TelegramClient(str(self.root / "telegram_scraper"), api_id, api_hash,
+            self._client = TelegramClient(str(self.account_root / "telegram_scraper"), api_id, api_hash,
                                           flood_sleep_threshold=0, request_retries=3,
                                           connection_retries=3, timeout=15, catch_up=True, sequential_updates=True)
         if not self._client.is_connected():
             await self._request(self._client.connect)
-            session = self.root / "telegram_scraper.session"
+            session = self.account_root / "telegram_scraper.session"
             if session.exists():
                 session.chmod(0o600)
         return self._client
@@ -407,7 +408,7 @@ class TelegramService:
         if not self.settings.get("api_id") or not self.settings.get("api_hash"):
             return {"authorized": False, "configured": False}
         # Merely opening the app must not create a new empty login session.
-        if self._client is None and not (self.root / "telegram_scraper.session").exists():
+        if self._client is None and not (self.account_root / "telegram_scraper.session").exists():
             return {"authorized": False, "configured": True}
         try:
             async with self._auth_lock:
@@ -454,7 +455,8 @@ class TelegramService:
             raise _user_error(exc) from None
 
     async def _entity(self, client: Any):
-        channel = str(self.settings.get("channel") or "").strip()
+        from .config import normalize_channel
+        channel = normalize_channel(str(self.settings.get("channel") or ""))
         if not channel:
             raise UserError("Choose the Telegram channel to archive in Settings.")
         parsed = urlparse(channel if "://" in channel else "https://" + channel)
@@ -473,7 +475,29 @@ class TelegramService:
                 raise UserError("This account has not joined that private channel. Join it in Telegram first, then try again.")
             return invitation.chat
         target = int(channel) if re.fullmatch(r"-?\d+", channel) else channel
-        return await self._request(lambda: client.get_entity(target))
+        try:
+            entity = await self._request(lambda: client.get_entity(target))
+        except ValueError:
+            if not isinstance(target, int) or target >= -10**12:
+                raise UserError("Telegram could not find that channel. Check its link and your account's access.") from None
+            # Private message links carry an ID but no access hash. Populate
+            # the session cache from channels the account already belongs to.
+            entity = None
+            dialogs = client.iter_dialogs().__aiter__()
+            while True:
+                self._check_cancel()
+                try:
+                    dialog = await self._request(dialogs.__anext__, retry_transient=False)
+                except StopAsyncIteration:
+                    break
+                if getattr(dialog, "id", None) == target:
+                    entity = dialog.entity
+                    break
+            if entity is None:
+                raise UserError("This account cannot access that private channel. Open it in Telegram with the same account first.") from None
+        if not getattr(entity, "title", None):
+            raise UserError("That link belongs to a person or bot. Choose a Telegram channel or group.")
+        return entity
 
     def _record(self, message: Any, raw: dict | None = None, observation_id: int | None = None) -> dict:
         raw = _json_value(message.to_dict()) if raw is None else raw

@@ -35,16 +35,11 @@ def default_root() -> Path:
 
 
 def normalize_channel(value: str) -> str:
-    value = value.strip()
-    if not value:
-        return ""
-    if re.fullmatch(r"-?[0-9]+", value):
-        return value
-    if re.fullmatch(r"@?[A-Za-z][A-Za-z0-9_]{3,31}", value):
-        return "@" + value.lstrip("@")
-    if re.fullmatch(r"https://t\.me/(?:\+[A-Za-z0-9_-]+|joinchat/[A-Za-z0-9_-]+|[A-Za-z][A-Za-z0-9_]{3,31})/?", value):
-        return value.rstrip("/")
-    raise ConfigError("Use a channel username, a t.me channel or invite link, or a numeric channel ID.")
+    from .links import normalize_channel as parse, ChannelLinkError
+    try:
+        return parse(value)
+    except ChannelLinkError as exc:
+        raise ConfigError(str(exc)) from None
 
 
 class Settings:

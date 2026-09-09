@@ -287,8 +287,15 @@ class Store:
                 _atomic_json(self.data_dir / "channel.json", {**existing, "title": title})
             return
         records, _ = self._read_records()
+        from .config import normalize_channel, ConfigError
         configured = str(configured_channel or "").strip().rstrip("/")
         legacy = str(legacy_channel or "").strip().rstrip("/")
+        try:
+            configured, legacy = normalize_channel(configured), normalize_channel(legacy)
+        except ConfigError:
+            # Storage also reads older identifiers. Keep the exact-match
+            # boundary for those; current user input is validated in Settings.
+            pass
         if records and (not legacy or configured != legacy):
             raise StoreError("This existing library has no saved channel identity. Reconnect its original configured channel before syncing.")
         _atomic_json(self.data_dir / "channel.json", {"version": 1, "id": id, "title": title})

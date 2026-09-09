@@ -26,3 +26,7 @@
 .file-launch .button { margin: 16px 0 8px; text-decoration: none; }
 .file-launch .file-launch-help { color: #67738b; font-size: 13px; }
 @media (max-width: 520px) { .file-launch { padding: 25px; margin: 7vh auto; } }
+
+/* Channel selection remains available in both the sidebar and mobile header. */
+.channel-picker{display:grid;gap:9px;margin:0 8px 25px;min-width:0}.channel-picker label{font-size:10px;font-weight:600;letter-spacing:.8px;color:var(--muted)}.channel-picker select{width:100%;min-width:0;min-height:39px;padding:8px;border:1px solid var(--line);border-radius:8px;background:#fff;color:var(--ink);font-size:12px;text-overflow:ellipsis}.channel-picker .text-button{justify-self:start;font-size:12px;min-height:28px}.sidebar .brand{margin-bottom:25px}.channel-dialog{width:min(520px,calc(100vw - 28px))}.channel-storage-note{font-size:12px;line-height:1.65;color:var(--muted);margin:20px 0}.channel-dialog .field small{line-height:1.65}.channel-field input[readonly]{background:var(--canvas);color:var(--muted)}
+@media(max-width:700px){.sidebar .brand{margin-bottom:0}.channel-picker{order:2;flex-basis:100%;grid-template-columns:minmax(0,1fr) auto;align-items:center;margin:0;gap:8px 14px}.channel-picker label{grid-column:1/-1}.channel-picker select{min-height:40px}.channel-picker .text-button{min-height:40px;white-space:nowrap}.library-nav{order:3}}

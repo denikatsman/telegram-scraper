@@ -62,7 +62,7 @@ def main(argv=None):
         from .server import LocalServer, Runtime, date_bounds
         runtime = Runtime(root)
         # One process owns the session/library; a second app exits with a clear message.
-        stack.enter_context(runtime.store.lock())
+        stack.enter_context(runtime.lock())
         # Read-only checks never repair data. App/capture startup can recover a
         # committed SQLite transaction now that this process owns the writer lock.
         if command not in {"verify", "check"}:

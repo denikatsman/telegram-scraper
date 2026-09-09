@@ -50,7 +50,14 @@
   let toastTimer;
   let searchTimer;
   let loginStep = "initial";
+  let channelOptionsSignature = "";
   const filters = { q: "", kind: "all", start: "", end: "", offset: 0, limit: 40 };
+
+  function archiveURL(path) {
+    const url = new URL(path, window.location.origin);
+    url.searchParams.set("library", state?.active_channel || "main");
+    return url.pathname + url.search;
+  }
 
   function text(id, value) {
     const node = $(id);
@@ -132,6 +139,7 @@
     }
     try {
       const headers = { Accept: "application/json" };
+      if (state?.active_channel) headers["X-Archive-Library"] = state.active_channel;
       const init = { credentials: "same-origin", cache: "no-store", signal: controller.signal, headers };
       if (body !== undefined) {
         if (!state?.csrf_token) throw new Error("The app is still connecting to its local server. Try again in a moment.");
@@ -178,14 +186,16 @@
       try {
         const next = await api("/api/state", undefined, { timeout: 12000 });
         const recovered = !online;
+        const changedChannel = state && state.active_channel !== next.active_channel;
         state = next;
+        if (changedChannel) resetChannelView();
         document.documentElement.dataset.appReady = "true";
         online = true;
         stateFailures = 0;
         $("network-notice").hidden = true;
         if (lastRunning && !state.job?.running) clearToast();
         renderState();
-        const librarySignature = [state.library?.total, state.library?.last_date, state.job?.added, state.job?.updated].join(":");
+        const librarySignature = [state.active_channel, state.library?.total, state.library?.last_date, state.job?.added, state.job?.updated].join(":");
         if (!postsLoaded || recovered || lastLibrarySignature !== librarySignature || (lastRunning && !state.job?.running)) await loadPosts({ preserve: postsLoaded });
         lastLibrarySignature = librarySignature;
         lastRunning = Boolean(state.job?.running);
@@ -214,6 +224,7 @@
   function renderState() {
     const library = state.library || {};
     const settings = state.settings || {};
+    renderChannels();
     text("stat-total", count(library.total));
     text("stat-videos", count(library.videos));
     text("stat-media", count(library.media));
@@ -257,10 +268,12 @@
 
   function renderControls() {
     const running = Boolean(state?.job?.running);
-    const unavailable = !state || !online;
-    const starting = pending.has("job");
+    const unavailable = !state || !online || state.channel_busy || pending.has("channel");
+    const starting = pending.has("job") || pending.has("channel");
     const authPending = pending.has("auth");
     const needsCredentials = !state?.settings?.api_id || !state?.settings?.api_hash_set;
+    ["channel-select", "channel-add", "channel-submit", "channel-link"].forEach((id) => { $(id).disabled = unavailable || running || starting || authPending || pending.has("settings") || settingsDirty; });
+    text("channel-submit", pending.has("channel") ? "Opening channel…" : "Add channel");
     $("setup-action").disabled = unavailable || running || starting || authPending || pending.has("settings");
     ["sync-button", "watch-button", "range-open", "verify-button"].forEach((id) => { $(id).disabled = unavailable || running || starting || pending.has("settings") || authPending; });
     $("watch-button").setAttribute("aria-pressed", String(running && (state?.job?.mode === "watch" || state?.job?.phase === "watching")));
@@ -359,7 +372,7 @@
       technical.append(element("summary", "", "Technical receipt"), element("pre", "", JSON.stringify(report, null, 2)));
       card.append(technical);
       const download = element("a", "button secondary compact", "Download full scrape report");
-      download.href = `/api/evidence/export?run=${encodeURIComponent(id)}`;
+      download.href = archiveURL(`/api/evidence/export?run=${encodeURIComponent(id)}`);
       download.download = `scrape-${id}.json`;
       card.append(download);
       return card;
@@ -572,6 +585,7 @@
     filters.start = "";
     filters.end = "";
     $("search-input").value = "";
+    $("kind-filter").value = "all";
     $("filter-start").value = "";
     $("filter-end").value = "";
     feedback("date-feedback", "");
@@ -593,6 +607,65 @@
     renderControls();
   }
 
+  function renderChannels() {
+    const entries = state.channels || [{ id: "main", name: state.settings?.channel || "Your first channel" }];
+    const signature = JSON.stringify(entries);
+    if (signature !== channelOptionsSignature) {
+      $("channel-select").replaceChildren(...entries.map((entry) => {
+        const option = element("option", "", entry.name || entry.channel);
+        option.value = entry.id;
+        return option;
+      }));
+      channelOptionsSignature = signature;
+    }
+    $("channel-select").value = state.active_channel || "main";
+    $("download-evidence").href = archiveURL("/api/evidence/export");
+    $("export-button").href = archiveURL("/api/export");
+  }
+
+  function resetChannelView() {
+    postsRequest?.abort();
+    postsGeneration += 1;
+    detailGeneration += 1;
+    clearTimeout(searchTimer);
+    postsLoaded = false;
+    lastRunning = false;
+    lastLibrarySignature = "";
+    totalResults = 0;
+    document.querySelectorAll("dialog[open]").forEach((dialog) => dialog.close());
+    Object.assign(filters, { q: "", kind: "all", start: "", end: "", offset: 0 });
+    $("search-input").value = "";
+    $("kind-filter").value = "all";
+    $("filter-start").value = "";
+    $("filter-end").value = "";
+    $("date-filter-toggle").setAttribute("aria-pressed", "false");
+    feedback("date-feedback", "");
+    document.querySelectorAll("[data-view]").forEach((item) => {
+      const active = item.dataset.view === "all";
+      item.classList.toggle("active", active);
+      if (active) item.setAttribute("aria-current", "page"); else item.removeAttribute("aria-current");
+    });
+    $("page-title").replaceChildren(document.createTextNode("All posts"), element("span", "heading-dot", "."));
+    skeleton();
+  }
+
+  async function changeChannel(path, body) {
+    await task("channel", async () => {
+      try {
+        const result = await api(path, body);
+        await refreshState();
+        $("channel-dialog").close();
+        $("channel-link").value = "";
+        toast(path === "/api/channels" && !result.added ? "That channel is already in your library. Opened its archive." : "Channel archive opened. Your Telegram login is shared across channels.");
+      } catch (error) {
+        if ($("channel-dialog").open) feedback("channel-feedback", error.message, "error");
+        else toast(error.message, true);
+        await refreshState();
+      }
+      if (state) $("channel-select").value = state.active_channel || "main";
+    });
+  }
+
   function fillSettings() {
     const settings = state.settings || {};
     $("api-id").value = settings.api_id || "";
@@ -600,6 +673,8 @@
     $("api-hash").placeholder = settings.api_hash_set ? "Already saved · leave blank to keep" : "Your API hash";
     text("hash-help", settings.api_hash_set ? "A hash is saved. Enter a new one only to replace it." : "Provided with your API ID.");
     $("channel").value = settings.channel || "";
+    $("channel").readOnly = Boolean(state.library?.total || (state.active_channel && state.active_channel !== "main"));
+    text("channel-help", $("channel").readOnly ? "This archive keeps its own channel. Use Add channel in the sidebar for another one." : "Paste an @username, a channel link or a message link. A message link selects its channel.");
     $("download-media").checked = settings.download_media !== false;
     $("archive-before-sync").checked = settings.archive_before_sync !== false;
     $("capture-context").checked = settings.capture_context !== false;
@@ -794,7 +869,7 @@
     body.replaceChildren(postMeta(post));
     if (kind !== "text") {
       if (post.media_url && !post.media_missing) {
-        const source = `/api/media/${encodeURIComponent(post.id)}`;
+        const source = archiveURL(`/api/media/${encodeURIComponent(post.id)}`);
         if (kind === "video" || kind === "photo") {
           const media = element(kind === "video" ? "video" : "img", `media-preview${kind === "photo" ? " photo" : ""}`);
           if (kind === "video") { media.controls = true; media.preload = "metadata"; media.playsInline = true; }
@@ -874,10 +949,10 @@
     const view = element("button", "button secondary compact", "Inspect saved source");
     view.type = "button";
     const download = element("a", "button secondary compact", "Download source preview");
-    download.href = `/api/posts/${encodeURIComponent(post.id)}/source`;
+    download.href = archiveURL(`/api/posts/${encodeURIComponent(post.id)}/source`);
     download.download = `post-${post.id}-source-preview.json`;
     const allSources = element("a", "button secondary compact", "Export all source data");
-    allSources.href = "/api/evidence/export";
+    allSources.href = archiveURL("/api/evidence/export");
     allSources.download = "source-observations.json";
     actions.append(view, download, allSources);
     section.append(actions);
@@ -893,7 +968,7 @@
         saved.forEach(value => {
           const label = `${String(value.role || value.constructor || "Media variant").replaceAll("_", " ")}${value.size_type ? ` · ${value.size_type}` : ""}`;
           const link = element("a", "button secondary compact", label);
-          link.href = `/api/posts/${encodeURIComponent(post.id)}/variants/${value.index}`;
+          link.href = archiveURL(`/api/posts/${encodeURIComponent(post.id)}/variants/${value.index}`);
           link.download = "";
           links.append(link);
         });
@@ -958,6 +1033,16 @@
   $("previous-page").addEventListener("click", () => { filters.offset = Math.max(0, filters.offset - filters.limit); loadPosts({ focus: true }); });
   $("next-page").addEventListener("click", () => { if (filters.offset + filters.limit < totalResults) { filters.offset += filters.limit; loadPosts({ focus: true }); } });
   $("settings-open").addEventListener("click", openSettings);
+  $("channel-add").addEventListener("click", () => {
+    feedback("channel-feedback", "");
+    showDialog("channel-dialog");
+    $("channel-link").focus();
+  });
+  $("channel-select").addEventListener("change", () => changeChannel("/api/channels/select", { id: $("channel-select").value }));
+  $("channel-form").addEventListener("submit", (event) => {
+    event.preventDefault();
+    changeChannel("/api/channels", { channel: $("channel-link").value.trim() });
+  });
   $("setup-action").addEventListener("click", openSetup);
   $("connection-action").addEventListener("click", openSettings);
   $("settings-form").addEventListener("submit", saveSettings);
@@ -980,7 +1065,7 @@
     if ($("export-button").getAttribute("aria-disabled") === "true") return;
     task("export", async () => {
       try {
-        const response = await fetch("/api/export", { credentials: "same-origin", cache: "no-store" });
+        const response = await fetch(archiveURL("/api/export"), { credentials: "same-origin", cache: "no-store" });
         if (!response.ok) {
           let message = "Your posts couldn’t be exported. Try again in a moment.";
           try { const result = await response.json(); if (typeof result.error === "string") message = result.error; } catch { /* Keep the readable fallback. */ }

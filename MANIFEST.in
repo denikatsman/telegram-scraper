@@ -4,9 +4,10 @@ include README.md RELEASE_NOTES.md LICENSE
 recursive-include telegram_scraper/static *.html *.css *.js
 prune telegram_data
 prune archives
+prune channels
 prune work
 prune reference
 prune output
-global-exclude *.session *.session-journal .telegram-scraper.json .telegram-scraper-ui.json .DS_Store
+global-exclude *.session *.session-journal .telegram-scraper.json .telegram-scraper-ui.json .telegram-scraper-channels.json .DS_Store
 recursive-include macos *.swift
 include tools/build_macos_app.py

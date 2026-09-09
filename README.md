@@ -1,10 +1,10 @@
 # telegram-scraper · Channel Archive
 
-A local app for saving and revisiting a Telegram channel's posts, videos, images, and files. Browse and search your saved library in a Mac app or browser, play downloaded videos, sync history, capture a date range, or keep watching for new posts and edits.
+A local app for saving and revisiting Telegram channels' posts, videos, images, and files. Keep separate channel archives under one project folder and one Telegram login. Browse and search your saved library in a Mac app or browser, play downloaded videos, sync history, capture a date range, or keep watching for new posts and edits.
 
 Your archive stays on your computer. The interface runs at a local address and does not use a hosted service, analytics, external fonts, or a CDN. Telegram is contacted only when you connect or start a Telegram operation.
 
-The repository is [denikatsman/telegram-scraper](https://github.com/denikatsman/telegram-scraper). This project's local home is `/Users/xxx/GitHub/telegram-scraper`: its code, post index, downloaded media, settings, session, backups and preserved comparison source all live inside that folder. The GitHub repository contains the maintained code and documentation. Scraped posts, media, credentials, generated apps and the unreviewed ICT Viper reference stay local.
+The repository is [denikatsman/telegram-scraper](https://github.com/denikatsman/telegram-scraper). This project's local home is `/Users/xxx/GitHub/telegram-scraper`: its code, post index, downloaded media, settings, session, backups and preserved comparison source all live inside that folder. The GitHub repository contains the maintained code and documentation. Scraped posts, media, credentials, generated apps and the original ICT Viper reference stay local.
 
 ## Start the app
 
@@ -43,13 +43,25 @@ For command-line installation, `python -m pip install .` also installs the `chan
 ## Connect a channel
 
 1. Click **Add API details** (or open **Settings**). Enter your own API ID and API hash from [Telegram's API development tools](https://my.telegram.org/apps). This app signs into your Telegram account; a BotFather bot token cannot be used.
-2. Enter the channel's `@username`, `https://t.me/...` link, or numeric ID. For private channels, your Telegram account must already have access. The app does not join channels for you.
+2. Enter the channel's `@username`, a channel or message link, or a numeric ID. For private channels, your Telegram account must already have access. The app does not join channels for you.
 3. Save settings, then click **Connect Telegram**. The app checks your saved session and shows phone-number sign-in if needed. Telegram may send the code inside Telegram rather than by SMS. If enabled on your account, your two-step verification password is requested next.
 4. Click **Sync now**. You can browse saved posts while it runs. **Stop** keeps completed posts and downloads; another sync checks history again and retries missing attachments.
 
 An existing local library is available before signing in. API credentials are stored privately in `.telegram-scraper.json`; passwords and login codes are not saved there. The reusable Telegram login is stored in `telegram_scraper.session`. Keep both files private. They, your media, backups, and local work files are excluded from Git and distribution packages.
 
-Each data folder belongs to one channel. Use a separate `--data-dir` folder for another channel so overlapping Telegram message IDs cannot mix libraries. An old archive without channel metadata needs its original configured channel identity before sync can safely attach it. This checkout's existing configuration has been preserved locally.
+Each archive belongs to one channel, so overlapping Telegram message IDs cannot mix libraries. An old archive without channel metadata needs its original configured channel identity before sync can safely attach it. This checkout's existing configuration has been preserved locally.
+
+## Add and switch channels
+
+Click **+ Add channel**, paste its channel or message link, and select **Add channel**. Use the **Channel archive** selector to switch between saved channels. Your selection survives an app restart; API details and the Telegram session are shared. Finish or stop a running capture before switching channels. The app runs one capture at a time.
+
+The first archive stays in the original `telegram_data/` and `archives/` folders. Additional archives live under `channels/<local-id>/`, each with its own posts, media, source database and backups. All of these folders remain inside the project and are excluded from Git. Changing channels never moves or merges saved posts. A missing or damaged channel folder is reported instead of being replaced with an empty archive.
+
+Supported inputs include `@channelname`, `t.me/channelname`, public post links such as `t.me/channelname/123`, private post links such as `t.me/c/1234567890/123`, public preview links under `t.me/s/`, invite links under `t.me/+...` or `t.me/joinchat/...`, and corresponding `tg://resolve`, `tg://privatepost` and `tg://join` links. Topic/message paths and ordinary message options follow [Telegram's documented link formats](https://core.telegram.org/api/links#message-links). A **message link selects the containing channel**, not a single-post capture. Choose **Sync** for accessible channel history or **Fetch a date range** for a period.
+
+Equivalent username links reuse the same archive. A private invite and a public username can refer to the same channel without looking alike; these different identifiers are not automatically merged. Private message IDs are resolved through channels the signed-in account can already access. Links for people, bots, sticker packs, proxies or other Telegram actions do not start a scrape.
+
+For command-line use, run commands against the project root; they use the channel most recently selected in the app. A different `--data-dir` starts an independent workspace with its own account settings.
 
 ## Everyday use
 
@@ -79,14 +91,16 @@ Your existing simplified records are **legacy records** until a new sync enriche
 
 ## Storage and recovery
 
-The original ICT Viper source is preserved unchanged under `reference/ict-viper/` for a later comparison. It is excluded from Git and packaging and is never imported by the app. This consolidation does not merge its implementation into the maintained app.
+The original ICT Viper source is preserved unchanged under `reference/ict-viper/`. The local comparison found no additional saved content or features worth importing. It is excluded from Git and packaging and is never imported by the app.
 
 ```text
 Channel Archive.app/           Generated Mac app; Applications contains a shortcut
 reference/ict-viper/           Local, unreviewed comparison source
 .telegram-scraper.json          Private settings
 .telegram-scraper-ui.json       Private running-app connection; removed on shutdown
+.telegram-scraper-channels.json Private channel list and selected archive
 telegram_scraper.session        Private Telegram login session
+channels/<local-id>/            Additional archives, each with telegram_data/ and archives/
 telegram_data/
   messages_all.json             Saved posts, metadata and prior edits
   channel.json                  Channel identity, established on sync

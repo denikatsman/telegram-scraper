@@ -1,4 +1,14 @@
-# Channel Archive 1.2.2 — validation and handoff
+# Channel Archive 1.3.0 — validation and handoff
+
+## 1.3 Multiple channels and pasted Telegram links
+
+The app now has Add channel and a channel selector. Each channel keeps its own posts, media, source database and backups inside the same project. The existing archive stays in place; additional archives use `channels/<local-id>/`. A private catalogue remembers the selection. All channels share one Telegram account session, including an unfinished login challenge. Capture remains one channel at a time, and switching is disabled while an operation runs.
+
+Channel usernames, public channel/post/preview links, private post and invite links, topic paths and corresponding `tg://` links select the containing channel. Sync and Date range determine capture scope. Equivalent username links reuse their archive. Resolving a private message ID can consult the signed-in account's existing dialogs; it never joins a channel. Other Telegram actions and links that resolve to people or bots are rejected.
+
+The project and active archive have separate writer locks. Switching validates the destination before publishing the selection, and cancellation drains disk work before releasing its lock. Missing folders and damaged indexes are never replaced with empty archives. Requests and download URLs carry their channel selection so an older tab cannot accidentally read or modify a different channel with the same message ID. Settings retain a channel's identity while sharing account credentials and saving preferences.
+
+Validation: **230 tests and 30 subtests passed**. Offline protocol and browser checks cover shared login, isolated overlapping message IDs, selection persistence, duplicate links, invalid links, failed/cancelled switches, stale requests, archive locks, guided phone/code/two-step setup and 320–1280-pixel layouts. Real Telegram sign-in and new live captures remain unverified until the account is connected; fixture login is not a live account test.
 
 ## 1.2.2 One project folder and renamed repository
 

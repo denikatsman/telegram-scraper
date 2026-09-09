@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 from concurrent.futures import TimeoutError as FutureTimeout
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -19,6 +20,7 @@ from urllib.parse import parse_qs, urlparse
 from .config import Settings
 from .storage import Store, StoreError
 from .evidence import EvidenceStore, EvidenceError
+from .channels import Channels
 
 
 def date_bounds(start="", end=""):
@@ -51,8 +53,13 @@ class Runtime:
     def __init__(self, root: Path):
         self.root = root.resolve()
         self.settings = Settings(self.root)
-        self.store = Store(self.root)
-        self.evidence = EvidenceStore(self.root)
+        self.channels = Channels(self.root)
+        self.primary_store = Store(self.root)
+        self.store = self.primary_store if self.channels.active == "main" else Store(self.channels.folder(self.channels.active))
+        self.evidence = EvidenceStore(self.store.root)
+        self._active_lock = None
+        self.context_revision = 0
+        self.library_busy = False
         self.library_error = None
         self.evidence_error = None
         try:
@@ -96,10 +103,132 @@ class Runtime:
     def get_service(self):
         if self.service is None:
             from .engine import TelegramService
-            self.service = TelegramService(self.root, dict(self.settings.values), self.store, self.report)
+            self.service = TelegramService(self.store.root, self.channel_settings(), self.store, self.report, account_root=self.root)
         return self.service
 
+    def channel_settings(self):
+        values = dict(self.settings.values)
+        values["channel"] = self.channels.channel(values.get("channel", ""))
+        if self.channels.active != "main":
+            values.pop("legacy_channel", None)
+        return values
+
+    @contextmanager
+    def lock(self):
+        # The project lock protects the shared account; the child lock also
+        # prevents a standalone CLI from writing into the selected archive.
+        with self.primary_store.lock():
+            if self.store is not self.primary_store:
+                self._active_lock = self.store.lock()
+                self._active_lock.__enter__()
+            try:
+                yield
+            finally:
+                self.release_channel_lock()
+
+    def release_channel_lock(self):
+        if self._active_lock is not None:
+            self._active_lock.__exit__(None, None, None)
+            self._active_lock = None
+
+    async def channel_disk(self, function):
+        # Cancellation must drain filesystem work before releasing its lock.
+        worker = asyncio.create_task(asyncio.to_thread(function))
+        try:
+            return await asyncio.shield(worker)
+        except asyncio.CancelledError:
+            await worker
+            raise
+
+    def check_channel(self, expected):
+        if self.library_busy or expected != self.channels.active:
+            raise ValueError("The selected channel changed. Refresh the app before continuing.")
+
+    async def scoped(self, expected, operation):
+        try:
+            self.check_channel(expected)
+        except BaseException:
+            operation.close()
+            raise
+        revision = self.context_revision
+        result = await operation
+        if revision != self.context_revision:
+            raise ValueError("The selected channel changed. Refresh the app before continuing.")
+        return result
+
+    async def channel_action(self, expected, payload, *, add=False):
+        self.check_channel(expected)
+        return await (self.add_channel(payload) if add else self.select_channel(payload))
+
+    def archive_url(self, path):
+        if not self.channels.values["channels"]:
+            return path
+        return path + ("&" if "?" in path else "?") + "library=" + self.channels.active
+
+    async def export_store(self):
+        return self.evidence
+
+    async def add_channel(self, payload):
+        if self.job["running"] or self.auth_busy or self.library_busy:
+            raise ValueError("Finish or stop the current operation before adding a channel.")
+        if set(payload) != {"channel"}:
+            raise ValueError("Paste a channel or message link to add its archive.")
+        if self.channels.active == "main" and not self.store.records and not self.settings.values.get("channel"):
+            from .config import normalize_channel
+            channel = normalize_channel(payload["channel"])
+            if not channel:
+                raise ValueError("Paste the channel or message link you want to archive.")
+            self.settings.update({"channel": channel})
+            if self.service:
+                self.service.settings = self.channel_settings()
+            return {"active_channel": "main", "added": True}
+        key, added = self.channels.add(payload["channel"], self.settings.values.get("channel", ""))
+        await self.select_channel({"id": key})
+        return {"active_channel": key, "added": added}
+
+    async def select_channel(self, payload):
+        if self.job["running"] or self.auth_busy or self.library_busy:
+            raise ValueError("Finish or stop the current operation before switching channels.")
+        if set(payload) != {"id"} or not isinstance(payload["id"], str):
+            raise ValueError("Choose one of your saved channels.")
+        key = payload["id"]
+        folder = self.channels.folder(key)
+        if key == self.channels.active:
+            return {"active_channel": key}
+        self.library_busy = True
+        candidate_lock = None
+        try:
+            store = self.primary_store if key == "main" else Store(folder)
+            if key != "main":
+                candidate_lock = store.lock()
+                candidate_lock.__enter__()
+            await self.channel_disk(store.load)
+            evidence = EvidenceStore(folder)
+            await self.channel_disk(evidence.prepare)
+            await self.channel_disk(evidence.validate)
+            # Persist selection only after the archive can be opened. A failed
+            # switch keeps the previous archive, login and selection intact.
+            self.channels.select(key)
+            self.release_channel_lock()
+            self._active_lock, candidate_lock = candidate_lock, None
+            self.store, self.evidence = store, evidence
+            self.context_revision += 1
+            self.library_error = self.evidence_error = None
+            self.job = {"running": False, "status": "idle", "phase": "idle", "message": "Ready when you are."}
+            if self.service:
+                # Reuse the one account connection and pending login challenge.
+                self.service.root = folder
+                self.service.store = store
+                self.service.evidence = evidence
+                self.service.settings = self.channel_settings()
+            return {"active_channel": key}
+        finally:
+            if candidate_lock is not None:
+                candidate_lock.__exit__(None, None, None)
+            self.library_busy = False
+
     async def state(self):
+        revision = self.context_revision
         records = list(self.store.records.values())
         dates = sorted(r.get("date") for r in records if isinstance(r.get("date"), str) and r["date"])
         try:
@@ -108,8 +237,23 @@ class Runtime:
             channel = {}
             self.library_error = str(exc)
         health = await self.health(records)
+        if revision != self.context_revision:
+            return await self.state()
+        settings = self.settings.public()
+        settings["channel"] = self.channel_settings()["channel"]
+        entries = self.channels.entries(self.settings.values.get("channel", ""))
+        for item in entries:
+            try:
+                info = channel if item["id"] == self.channels.active else Store(self.channels.folder(item["id"])).channel_info() or {}
+            except StoreError:
+                info = {}
+            if info.get("title"):
+                item["name"] = info["title"]
+            elif item["channel"].startswith("https://t.me/+"):
+                item["name"] = "Original archive" if item["id"] == "main" else "Private channel " + str(entries.index(item) + 1)
         return {
-            "settings": self.settings.public(),
+            "settings": settings,
+            "channels": entries, "active_channel": self.channels.active, "channel_busy": self.library_busy,
             "connection": dict(self.connection),
             "job": dict(self.job),
             "health": health,
@@ -125,21 +269,25 @@ class Runtime:
         }
 
     async def health(self, records=None):
+        revision, evidence = self.context_revision, self.evidence
+        error = self.evidence_error
         records = records if records is not None else list(self.store.records.values())
         raw_count = sum(isinstance(r.get("raw"), dict) for r in records)
         media_health = await asyncio.to_thread(self._media_health, records)
         try:
-            runs = await asyncio.to_thread(self.evidence.runs, limit=20)
-            stats = await asyncio.to_thread(self.evidence.stats)
-            if self.evidence_error:
+            runs = await asyncio.to_thread(evidence.runs, limit=20)
+            stats = await asyncio.to_thread(evidence.stats)
+            if error:
                 # Summary reads do not verify payload digests. Only a complete
                 # validation may clear an earlier corruption/recovery failure.
-                await asyncio.to_thread(self.evidence.validate)
+                await asyncio.to_thread(evidence.validate)
         except EvidenceError as exc:
-            self.evidence_error = str(exc)
+            error = str(exc)
             runs, stats = [], {}
         else:
-            self.evidence_error = None
+            error = None
+        if revision == self.context_revision:
+            self.evidence_error = error
         for run in runs:
             active = self.job.get("running") and self.job.get("run_id") == run.get("id", run.get("run_id"))
             status = run.get("status", run.get("state", "unknown"))
@@ -149,19 +297,20 @@ class Runtime:
         return {
             "posts_with_raw_metadata": raw_count, "legacy_posts": len(records) - raw_count,
             **media_health, "evidence": stats, "runs": runs,
-            "error": self.evidence_error,
+            "error": error,
             "coverage_note": "A completed scan records what Telegram returned within its saved scope. Deleted, hidden, or inaccessible history cannot be recovered by the scraper.",
         }
 
     def _media_health(self, records):
         # Folder reads can be slow on external drives. Never block Telethon's
         # event loop (or the Stop action) on a library-wide filesystem scan.
+        store = self.store
         available, referenced, checksums, missing = 0, 0, 0, 0
         for record in records:
             if not record.get("media_file") and not record.get("has_media"):
                 continue
             referenced += 1
-            path = self.store.media_path(record)
+            path = store.media_path(record)
             try:
                 size = path.stat().st_size if path and path.is_file() else 0
                 expected = record.get("media_size")
@@ -207,7 +356,7 @@ class Runtime:
         result = {key: record.get(key) for key in ("id", "date", "text", "type", "action", "action_title", "edit_date", "media_status", "media_error")}
         result.update({
             "media_kind": media_kind(record),
-            "media_url": f"/api/media/{record['id']}" if available else None,
+            "media_url": self.archive_url(f"/api/media/{record['id']}") if available else None,
             "media_name": path.name if path else record.get("media_name"),
             "media_missing": bool(record.get("media_file") or record.get("has_media")) and not available,
             "media_size": path.stat().st_size if available else record.get("media_size"),
@@ -246,7 +395,7 @@ class Runtime:
         channel = self.store.channel_info() or {}
         channel_id = record.get("source_channel_id") or channel.get("id")
         preview = await asyncio.to_thread(self.evidence.post_preview, channel_id, message_id) if channel_id else {"observations": [], "related_observations": []}
-        return {"record": record, **preview, "complete_export_url": "/api/evidence/export",
+        return {"record": record, **preview, "complete_export_url": self.archive_url("/api/evidence/export"),
                 "note": "This is a bounded source preview, not a complete per-post export or a reconstruction of data Telegram did not return. The complete source export contains every saved observation and occurrence; Export posts contains the full reading index."}
 
     async def posts(self, params):
@@ -314,29 +463,40 @@ class Runtime:
         return self.store.messages_file
 
     async def update_settings(self, incoming):
-        if self.job["running"] or self.auth_busy:
+        if self.job["running"] or self.auth_busy or self.library_busy:
             raise ValueError("Wait for the current operation to finish before changing settings.")
+        self.auth_busy = True
+        try:
+            return await self._update_settings(incoming)
+        finally:
+            self.auth_busy = False
+
+    async def _update_settings(self, incoming):
         # A configured legacy library has one known source. Never silently rebind it.
-        if self.store.records and "channel" in incoming:
+        incoming = dict(incoming)
+        if (self.store.records or self.channels.active != "main" or self.store.channel_info()) and "channel" in incoming:
             from .config import normalize_channel
             if not isinstance(incoming["channel"], str):
                 raise ValueError("Enter a channel username or link.")
-            if normalize_channel(incoming["channel"]) != normalize_channel(self.settings.values.get("channel", "")):
-                raise ValueError("This library already contains a channel. To archive another channel, launch with --data-dir pointing to a new folder.")
-        old_identity = tuple(self.settings.values.get(k) for k in ("api_id", "api_hash", "channel"))
+            if normalize_channel(incoming["channel"]) != normalize_channel(self.channel_settings().get("channel", "")):
+                raise ValueError("This archive belongs to its saved channel. Use Add channel to create a separate archive for another channel.")
+        if self.channels.active != "main":
+            incoming.pop("channel", None)
+        old_identity = tuple(self.settings.values.get(k) for k in ("api_id", "api_hash"))
         result = self.settings.update(incoming)
-        new_identity = tuple(self.settings.values.get(k) for k in ("api_id", "api_hash", "channel"))
+        result["channel"] = self.channel_settings()["channel"]
+        new_identity = tuple(self.settings.values.get(k) for k in ("api_id", "api_hash"))
         if old_identity != new_identity:
             if self.service:
                 await self.service.close()
                 self.service = None
             self.connection = {"authorized": False, "step": "disconnected"}
         elif self.service:
-            self.service.settings = dict(self.settings.values)
+            self.service.settings = self.channel_settings()
         return {"settings": result}
 
     async def authenticate(self, action, payload):
-        if self.job["running"] or self.auth_busy:
+        if self.job["running"] or self.auth_busy or self.library_busy:
             raise ValueError("Another operation is running. Wait for it to finish first.")
         self.auth_busy = True
         try:
@@ -360,7 +520,7 @@ class Runtime:
             self.auth_busy = False
 
     async def start_job(self, payload):
-        if self.job["running"] or self.auth_busy:
+        if self.job["running"] or self.auth_busy or self.library_busy:
             raise ValueError("An operation is already running. Stop it or wait for it to finish.")
         mode = payload.get("mode")
         if mode not in {"sync", "range", "watch", "verify"}:
@@ -378,7 +538,7 @@ class Runtime:
         if mode != "verify":
             if not self.connection.get("authorized"):
                 raise ValueError("Connect your Telegram account in Settings before starting a sync.")
-            if not self.settings.values.get("channel"):
+            if not self.channel_settings().get("channel"):
                 raise ValueError("Add a channel in Settings first.")
         self.job = {"running": True, "status": "running", "phase": "starting", "mode": mode,
                     "message": "Starting archive check…" if mode == "verify" else "Preparing your archive…",
@@ -420,6 +580,8 @@ class Runtime:
 
     async def _close(self):
         await self.stop_job()
+        while self.library_busy or self.auth_busy:
+            await asyncio.sleep(0.02)
         if self.task and not self.task.done():
             # A timeout must never detach a disk worker and release the library
             # lock while it is still publishing a checkpoint or backup.
@@ -430,6 +592,7 @@ class Runtime:
             except (Exception, asyncio.CancelledError):
                 pass
         await self.loop.shutdown_default_executor()
+        self.release_channel_lock()
 
     def close(self):
         try:
@@ -496,6 +659,27 @@ class Handler(BaseHTTPRequestHandler):
     def error(self, message, status=400):
         self.json_response({"ok": False, "error": message}, status)
 
+    def channel_key(self):
+        query = parse_qs(urlparse(self.path).query)
+        values = query.get("library", [])
+        header = self.headers.get("X-Archive-Library")
+        if len(values) > 1 or header and values and header != values[0]:
+            raise ValueError("This request contains conflicting channel selections. Refresh the app.")
+        key = header or (values[0] if values else None)
+        if key is None:
+            if self.app.channels.values["channels"]:
+                raise ValueError("Refresh the app to select the channel for this request.")
+            key = "main"
+        return key
+
+    def library_call(self, operation):
+        try:
+            key = self.channel_key()
+        except BaseException:
+            operation.close()
+            raise
+        return self.app.call(self.app.scoped(key, operation))
+
     def do_HEAD(self):
         self.do_GET()
 
@@ -521,25 +705,25 @@ class Handler(BaseHTTPRequestHandler):
                 self.json_response({"app": "channel-archive", "root": str(self.app.root), "pid": os.getpid(), "version": __version__})
             elif path == "/api/posts":
                 params = {key: value[-1] for key, value in parse_qs(urlparse(self.path).query).items()}
-                self.json_response(self.app.call(self.app.posts(params)))
+                self.json_response(self.library_call(self.app.posts(params)))
             elif re.fullmatch(r"/api/posts/\d+", path):
-                self.json_response(self.app.call(self.app.post(int(path.rsplit("/", 1)[1]))))
+                self.json_response(self.library_call(self.app.post(int(path.rsplit("/", 1)[1]))))
             elif re.fullmatch(r"/api/posts/\d+/source", path):
-                self.json_response(self.app.call(self.app.source_post(int(path.split("/")[3]))), indent=2)
+                self.json_response(self.library_call(self.app.source_post(int(path.split("/")[3]))), indent=2)
             elif re.fullmatch(r"/api/posts/\d+/variants/\d+", path):
                 parts = path.split("/")
-                file, filename = self.app.call(self.app.variant(int(parts[3]), int(parts[5])))
+                file, filename = self.library_call(self.app.variant(int(parts[3]), int(parts[5])))
                 self.send_file(file, download=filename)
             elif path == "/api/health":
-                self.json_response(self.app.call(self.app.health()))
+                self.json_response(self.library_call(self.app.health()))
             elif path == "/api/evidence/export":
                 params = parse_qs(urlparse(self.path).query)
                 run_id = params.get("run", [None])[-1]
                 self.send_evidence(run_id)
             elif re.fullmatch(r"/api/media/\d+", path):
-                self.send_file(self.app.call(self.app.media(int(path.rsplit("/", 1)[1]))), media=True)
+                self.send_file(self.library_call(self.app.media(int(path.rsplit("/", 1)[1]))), media=True)
             elif path == "/api/export":
-                self.send_file(self.app.call(self.app.export()), download="messages_all.json")
+                self.send_file(self.library_call(self.app.export()), download="messages_all.json")
             elif path == "/favicon.ico":
                 self.send_response(204)
                 self.end_headers()
@@ -581,13 +765,15 @@ class Handler(BaseHTTPRequestHandler):
                 return
             path = urlparse(self.path).path
             if path == "/api/settings":
-                result = self.app.call(self.app.update_settings(payload))
+                result = self.library_call(self.app.update_settings(payload))
+            elif path in {"/api/channels", "/api/channels/select"}:
+                result = self.app.call(self.app.channel_action(self.channel_key(), payload, add=path == "/api/channels"))
             elif path in {"/api/connect", "/api/login/code", "/api/login/verify"}:
-                result = self.app.call(self.app.authenticate(path.rsplit("/", 1)[1], payload))
+                result = self.library_call(self.app.authenticate(path.rsplit("/", 1)[1], payload))
             elif path == "/api/jobs":
-                result = self.app.call(self.app.start_job(payload))
+                result = self.library_call(self.app.start_job(payload))
             elif path == "/api/jobs/stop":
-                result = self.app.call(self.app.stop_job())
+                result = self.library_call(self.app.stop_job())
             else:
                 self.error("That action was not found.", 404)
                 return
@@ -601,13 +787,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def send_evidence(self, run_id=None):
         import tempfile
+        evidence = self.library_call(self.app.export_store())
         # Stream SQLite rows to a temporary export before sending any headers.
         # The writer owns a consistent read transaction; export does not mutate
         # the archive, and errors cannot masquerade as a successful download.
         with tempfile.TemporaryDirectory(prefix="channel-source-export-") as directory:
             path = Path(directory) / ("scrape-report.json" if run_id else "source-observations.json")
             with path.open("w", encoding="utf-8") as target:
-                self.app.evidence.write_export(target, run_id=run_id)
+                evidence.write_export(target, run_id=run_id)
             self.send_file(path, download=path.name)
 
     def send_file(self, path, *, set_cookie=False, media=False, download=None):
