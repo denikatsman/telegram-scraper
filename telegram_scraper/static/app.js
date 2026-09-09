@@ -1,6 +1,30 @@
 "use strict";
 
 (() => {
+  // A file preview has no archive server. Give it a working launch path
+  // before binding controls or making any API requests.
+  if (window.location.protocol === "file:") {
+    document.title = "Open Channel Archive";
+    const screen = document.createElement("main");
+    screen.className = "file-launch";
+    const eyebrow = document.createElement("p");
+    eyebrow.className = "eyebrow";
+    eyebrow.textContent = "CHANNEL ARCHIVE";
+    const heading = document.createElement("h1");
+    heading.textContent = "Your archive opens in the app.";
+    const explanation = document.createElement("p");
+    explanation.textContent = "This is the interface file. Open Channel Archive to browse your saved posts and connect to Telegram.";
+    const launch = document.createElement("a");
+    launch.className = "button primary";
+    launch.href = "channel-archive://open";
+    launch.textContent = "Open Channel Archive";
+    const help = document.createElement("p");
+    help.className = "file-launch-help";
+    help.textContent = "If the button doesn’t open the app, open Channel Archive.app from your Applications folder. To run from source, use Launch.command in the project folder.";
+    screen.append(eyebrow, heading, explanation, launch, help);
+    document.body.replaceChildren(screen);
+    return;
+  }
   const $ = (id) => document.getElementById(id);
   const number = new Intl.NumberFormat();
   const dateFormat = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "short", year: "numeric" });

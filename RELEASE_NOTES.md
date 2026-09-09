@@ -1,4 +1,12 @@
-# Channel Archive 1.2.0 — validation and handoff
+# Channel Archive 1.2.1 — validation and handoff
+
+## 1.2.1 Launching from a file and moving the library
+
+Opening the HTML file directly previously lost its stylesheet and script because the asset URLs pointed to the filesystem root. Assets now use relative paths. A direct-file preview shows a styled launch screen with an Open Channel Archive action and avoids unavailable controls or API requests. The installed Mac app registers that launch link; it only opens the window and cannot supply credentials, change the selected library or start a scrape. The source launcher also chooses an available port.
+
+The Mac bundle now stores a macOS bookmark for the chosen library. It follows ordinary folder moves and renames on reopening, and fails clearly when the folder is unavailable instead of creating an empty replacement. The Python environment still needs to remain at its configured location. This pass found the existing library had moved to the Desktop, reconnected the installed app there, and verified the original post index, settings and Telegram session were unchanged.
+
+Validation: **176 tests and 30 subtests passed**. Scripted Chromium opened the actual `file://` entry with styles, a launch action, no API requests or page exceptions, and no overflow at 320, 768 or 1280 pixels. An isolated native bundle reopened a moved library and refused a missing library without recreating either old path. Launch Services resolved the launch link to the installed app. The updated app served the existing **1,406-post** library from its new location. Live Telegram login and capture still require account sign-in.
 
 ## 1.2 Mac app and guided setup
 

@@ -25,6 +25,8 @@ def build(output, library):
     import telethon  # noqa: F401
     output = output.expanduser().resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
+    library = library.expanduser().resolve()
+    library.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix=".channel-archive-build-", dir=output.parent) as temporary:
         temporary = Path(temporary)
         bundle = temporary / "Channel Archive.app"
@@ -44,13 +46,18 @@ def build(output, library):
                 shutil.copy2(path, target)
         # Preserve a virtual environment's interpreter path. Resolving its
         # symlink would select the base Python and lose installed dependencies.
-        (resources / "launcher.json").write_text(json.dumps({"python": os.path.abspath(sys.executable), "library": str(library.expanduser().resolve())}, indent=2))
+        bookmark = subprocess.run([str(executable), "--bookmark-library", str(library)],
+                                  check=True, capture_output=True, text=True).stdout.strip()
+        (resources / "launcher.json").write_text(json.dumps({"python": os.path.abspath(sys.executable),
+            "library": str(library), "libraryBookmark": bookmark}, indent=2))
         shutil.copy2(source / "LICENSE", resources / "LICENSE")
         info = {"CFBundleExecutable": "ChannelArchive", "CFBundleIdentifier": "local.channelarchive.desktop",
                 "CFBundleName": "Channel Archive", "CFBundleDisplayName": "Channel Archive",
                 "CFBundlePackageType": "APPL", "CFBundleShortVersionString": __version__,
                 "CFBundleVersion": __version__, "LSMinimumSystemVersion": "12.0",
                 "NSHighResolutionCapable": True, "CFBundleIconFile": "AppIcon",
+                "CFBundleURLTypes": [{"CFBundleURLName": "Open Channel Archive", "CFBundleTypeRole": "Viewer",
+                                      "CFBundleURLSchemes": ["channel-archive"]}],
                 "NSAppTransportSecurity": {"NSAllowsArbitraryLoadsInWebContent": True, "NSAllowsLocalNetworking": True}}
         (contents / "Info.plist").write_bytes(plistlib.dumps(info))
         iconset = temporary / "AppIcon.iconset"

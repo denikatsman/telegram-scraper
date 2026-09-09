@@ -10,6 +10,8 @@ On macOS, open **Channel Archive.app**. The setup card walks you through API det
 
 The Mac app starts its local server on an available port and closes it safely when you quit. If the same library is already open in a browser server, the app reuses that server and leaves it running when you close the window. **File → Show Archive Folder** opens your data folder; **⌘,** opens Settings.
 
+Opening `telegram_scraper/static/index.html` directly shows a launch screen with **Open Channel Archive**. The HTML file needs the running app to access your library; it cannot run the scraper by itself. The launch button opens the installed Mac app and never starts a scrape automatically.
+
 ### Build the Mac app once
 
 Requires macOS 12 or newer, Python 3.10 or newer and Xcode command-line tools. From this checkout:
@@ -22,11 +24,11 @@ python tools/build_macos_app.py --output "$HOME/Applications/Channel Archive.app
 open "$HOME/Applications/Channel Archive.app"
 ```
 
-The bundle contains the interface and backend code, and points to the Python installation and library folder selected when it was built. Keep that Python environment and library in place; rebuild after moving them or updating the source. To select another library, add `--data-dir /path/to/library` to the build command. No settings, Telegram session, posts or media are copied into the app. This is a local build, not a self-contained or notarized installer for other Macs.
+The bundle contains the interface and backend code, and points to the Python installation and library folder selected when it was built. The Mac app remembers the library with a macOS folder bookmark so it can follow ordinary Finder moves and renames. If the folder is unavailable, it stops instead of creating a replacement empty archive. Keep the selected Python environment in place; rebuild after changing Python or updating the source. To select another library, add `--data-dir /path/to/library` to the build command. No settings, Telegram session, posts or media are copied into the app. This is a local build, not a self-contained or notarized installer for other Macs.
 
 ### Browser or command line
 
-On macOS or Linux, install the Python requirements above, then run `python main.py`. On macOS, `Launch.command` is also available. Keep its Terminal window open while the browser app runs; press **Ctrl+C** there to stop it safely. The browser app normally opens at `http://127.0.0.1:8765`.
+On macOS or Linux, install the Python requirements above, then run `python main.py`. On macOS, `Launch.command` is also available and chooses an unused port. Keep its Terminal window open while the browser app runs; press **Ctrl+C** there to stop it safely. The browser app normally opens at `http://127.0.0.1:8765`.
 
 If that port is busy:
 

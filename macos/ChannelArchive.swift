@@ -98,7 +98,24 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
             return
         }
         let override = ProcessInfo.processInfo.environment["CHANNEL_ARCHIVE_DATA_DIR"]
-        root = URL(fileURLWithPath: override ?? library, isDirectory: true).standardizedFileURL
+        if let override = override {
+            root = URL(fileURLWithPath: override, isDirectory: true).standardizedFileURL
+        } else if let encoded = config["libraryBookmark"] {
+            var stale = false
+            guard let bookmark = Data(base64Encoded: encoded),
+                  let resolved = try? URL(resolvingBookmarkData: bookmark, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &stale),
+                  isDirectory(resolved) else {
+                fail("Your archive folder is unavailable. Reconnect its drive or restore the folder, then reopen Channel Archive. Your saved library has not been replaced.")
+                return
+            }
+            root = resolved.standardizedFileURL
+        } else {
+            root = URL(fileURLWithPath: library, isDirectory: true).standardizedFileURL
+            guard isDirectory(root) else {
+                fail("Your archive folder has moved or is unavailable. Rebuild Channel Archive from the folder’s new location to reconnect your saved library.")
+                return
+            }
+        }
         guard FileManager.default.isExecutableFile(atPath: python) else {
             fail("The Python installation used to build this app is no longer available. Install Python 3.10 or newer, then rebuild the app.")
             return
@@ -178,6 +195,16 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         window.makeKeyAndOrderFront(nil)
         return true
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        // The launch link only brings up this app. It cannot choose a library,
+        // supply credentials, or trigger scraping from an external page.
+        guard urls.contains(where: { $0.scheme == "channel-archive" && $0.host == "open" &&
+            ["", "/"].contains($0.path) && $0.query == nil && $0.fragment == nil &&
+            $0.user == nil && $0.password == nil && $0.port == nil }) else { return }
+        window?.makeKeyAndOrderFront(nil)
+        application.activate(ignoringOtherApps: true)
     }
 
     func windowShouldClose(_ sender: NSWindow) -> Bool { NSApp.terminate(nil); return false }
@@ -322,6 +349,11 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
     }
 }
 
+func isDirectory(_ url: URL) -> Bool {
+    var directory = ObjCBool(false)
+    return FileManager.default.fileExists(atPath: url.path, isDirectory: &directory) && directory.boolValue
+}
+
 func renderIcon(to path: String) {
     let image = NSImage(size: NSSize(width: 1024, height: 1024))
     image.lockFocus()
@@ -344,6 +376,15 @@ func renderIcon(to path: String) {
 let app = NSApplication.shared
 if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--render-icon" {
     renderIcon(to: CommandLine.arguments[2])
+} else if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--bookmark-library" {
+    do {
+        let url = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
+        let bookmark = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+        print(bookmark.base64EncodedString())
+    } catch {
+        fputs("Could not remember the archive folder: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
 } else {
     let delegate = ChannelArchiveApp()
     app.delegate = delegate

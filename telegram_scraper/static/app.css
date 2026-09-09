@@ -19,3 +19,10 @@
 @media(max-width:650px){.setup-panel {padding:20px;gap:16px}.setup-panel>div{flex-basis:100%}.setup-panel>.button{width:100%}.setup-steps{gap:7px}.setup-steps li{font-size:11px;padding:6px 8px}}
 .dialog-header {position:sticky;top:0;z-index:2;background:#fff}
 .saving-preferences {margin-top:22px;padding:13px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}.saving-preferences>summary {cursor:pointer;font-size:12px;font-weight:600;color:#616b84}.saving-preferences[open] {padding-bottom:17px}
+/* A directly opened HTML file cannot connect to the archive service. */
+.file-launch { box-sizing: border-box; width: min(580px, calc(100% - 40px)); margin: 12vh auto; padding: 40px; border: 1px solid #e3e6ef; border-radius: 22px; background: #fff; box-shadow: 0 12px 40px #252a4410; }
+.file-launch h1 { margin: 14px 0 18px; font-size: clamp(26px, 5vw, 36px); line-height: 1.2; letter-spacing: -1px; }
+.file-launch p { line-height: 1.65; }
+.file-launch .button { margin: 16px 0 8px; text-decoration: none; }
+.file-launch .file-launch-help { color: #67738b; font-size: 13px; }
+@media (max-width: 520px) { .file-launch { padding: 25px; margin: 7vh auto; } }
