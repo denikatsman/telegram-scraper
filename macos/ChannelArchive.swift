@@ -385,6 +385,16 @@ if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--render-ico
         fputs("Could not remember the archive folder: \(error.localizedDescription)\n", stderr)
         exit(1)
     }
+} else if CommandLine.arguments.count == 4 && CommandLine.arguments[1] == "--make-alias" {
+    do {
+        let target = URL(fileURLWithPath: CommandLine.arguments[2], isDirectory: true)
+        let destination = URL(fileURLWithPath: CommandLine.arguments[3])
+        let bookmark = try target.bookmarkData(options: .suitableForBookmarkFile, includingResourceValuesForKeys: nil, relativeTo: nil)
+        try URL.writeBookmarkData(bookmark, to: destination)
+    } catch {
+        fputs("Could not create the app shortcut: \(error.localizedDescription)\n", stderr)
+        exit(1)
+    }
 } else {
     let delegate = ChannelArchiveApp()
     app.delegate = delegate

@@ -83,9 +83,35 @@ def build(output, library):
     return output
 
 
+def install_shortcut(bundle):
+    """Keep the actual app inside the project; Applications holds a Finder alias."""
+    source = Path(__file__).resolve().parents[1]
+    shortcut = Path.home() / "Applications" / "Channel Archive.app"
+    shortcut.parent.mkdir(parents=True, exist_ok=True)
+    if bundle == shortcut:
+        raise SystemExit("Build the app inside the project before installing its shortcut.")
+    temporary = shortcut.with_name(f".channel-archive-shortcut-{uuid.uuid4().hex}.alias")
+    try:
+        executable = bundle / "Contents" / "MacOS" / "ChannelArchive"
+        subprocess.run([str(executable), "--make-alias", str(bundle), str(temporary)], check=True)
+        if shortcut.exists() or shortcut.is_symlink():
+            backups = source / "work" / "app-backups"
+            backups.mkdir(parents=True, exist_ok=True)
+            shortcut.rename(backups / f"Channel Archive-previous-{uuid.uuid4().hex[:8]}.app")
+        temporary.rename(shortcut)
+    finally:
+        temporary.unlink(missing_ok=True)
+    subprocess.run(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
+                    "-f", str(bundle)], check=True)
+    print(f"Applications shortcut: {shortcut}")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path("dist/Channel Archive.app"))
+    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "Channel Archive.app")
     parser.add_argument("--data-dir", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--install-shortcut", action="store_true", help="add or refresh an Applications shortcut to this project’s app")
     args = parser.parse_args()
-    build(args.output, args.data_dir)
+    bundle = build(args.output, args.data_dir)
+    if args.install_shortcut:
+        install_shortcut(bundle)

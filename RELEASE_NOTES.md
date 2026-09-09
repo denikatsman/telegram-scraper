@@ -1,4 +1,14 @@
-# Channel Archive 1.2.1 — validation and handoff
+# Channel Archive 1.2.2 — validation and handoff
+
+## 1.2.2 One project folder and renamed repository
+
+The maintained checkout now lives at `/Users/xxx/GitHub/telegram-scraper`, backed by `denikatsman/telegram-scraper` on GitHub. The whole library moved with the checkout: saved posts, original media, ZIP backups, settings and the Telegram session remain physically inside the project. These private files stay out of Git and distribution packages. The seven original ICT Viper files are preserved unchanged in the ignored `reference/ict-viper/` folder for a later comparison; none were imported into the app.
+
+The generated Mac app now lives inside the project. Its Applications entry is a Finder shortcut to that app. The build tool can install or refresh the shortcut while preserving an earlier installed app inside `work/app-backups/`. `Launch.command` opens the project's native app when available; its browser fallback explicitly uses this project's library and an available port.
+
+Validation: **176 tests and 30 subtests passed**. Read-only verification passed for **1,406 posts, 379 media files and 25 ZIP backups**, with zero integrity issues. The move retained the original file identities and sizes; saved settings, session, post-index and reference-source hashes were preserved. The existing notice that **27 current posts are newer than the verified backups** remains. This move did not sign into Telegram or scrape new content.
+
+Earlier local removals of the obsolete Windows launcher, issue templates and `.gitattributes` are included in the consolidated repository state. The sections below retain the historical scope of previous releases.
 
 ## 1.2.1 Launching from a file and moving the library
 

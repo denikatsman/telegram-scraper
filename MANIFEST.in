@@ -5,6 +5,7 @@ recursive-include telegram_scraper/static *.html *.css *.js
 prune telegram_data
 prune archives
 prune work
+prune reference
 prune output
 global-exclude *.session *.session-journal .telegram-scraper.json .telegram-scraper-ui.json .DS_Store
 recursive-include macos *.swift

@@ -1,12 +1,14 @@
-# Channel Archive
+# telegram-scraper · Channel Archive
 
 A local app for saving and revisiting a Telegram channel's posts, videos, images, and files. Browse and search your saved library in a Mac app or browser, play downloaded videos, sync history, capture a date range, or keep watching for new posts and edits.
 
 Your archive stays on your computer. The interface runs at a local address and does not use a hosted service, analytics, external fonts, or a CDN. Telegram is contacted only when you connect or start a Telegram operation.
 
+The repository is [denikatsman/telegram-scraper](https://github.com/denikatsman/telegram-scraper). This project's local home is `/Users/xxx/GitHub/telegram-scraper`: its code, post index, downloaded media, settings, session, backups and preserved comparison source all live inside that folder. The GitHub repository contains the maintained code and documentation. Scraped posts, media, credentials, generated apps and the unreviewed ICT Viper reference stay local.
+
 ## Start the app
 
-On macOS, open **Channel Archive.app**. The setup card walks you through API details, choosing your channel and signing into Telegram. You can browse an existing library before connecting. No Terminal window is needed for everyday use.
+On macOS, open **Channel Archive.app** inside the project, or its shortcut in Applications. The actual app stays inside the project alongside its archive. The setup card walks you through API details, choosing your channel and signing into Telegram. You can browse an existing library before connecting. No Terminal window is needed for everyday use.
 
 The Mac app starts its local server on an available port and closes it safely when you quit. If the same library is already open in a browser server, the app reuses that server and leaves it running when you close the window. **File → Show Archive Folder** opens your data folder; **⌘,** opens Settings.
 
@@ -20,15 +22,15 @@ Requires macOS 12 or newer, Python 3.10 or newer and Xcode command-line tools. F
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
-python tools/build_macos_app.py --output "$HOME/Applications/Channel Archive.app"
-open "$HOME/Applications/Channel Archive.app"
+python tools/build_macos_app.py --install-shortcut
+open "Channel Archive.app"
 ```
 
 The bundle contains the interface and backend code, and points to the Python installation and library folder selected when it was built. The Mac app remembers the library with a macOS folder bookmark so it can follow ordinary Finder moves and renames. If the folder is unavailable, it stops instead of creating a replacement empty archive. Keep the selected Python environment in place; rebuild after changing Python or updating the source. To select another library, add `--data-dir /path/to/library` to the build command. No settings, Telegram session, posts or media are copied into the app. This is a local build, not a self-contained or notarized installer for other Macs.
 
 ### Browser or command line
 
-On macOS or Linux, install the Python requirements above, then run `python main.py`. On macOS, `Launch.command` is also available and chooses an unused port. Keep its Terminal window open while the browser app runs; press **Ctrl+C** there to stop it safely. The browser app normally opens at `http://127.0.0.1:8765`.
+On macOS or Linux, install the Python requirements above, then run `python main.py`. On macOS, `Launch.command` opens this project's Mac app if it has been built; otherwise it starts the browser interface on an unused port using this project's archive. For the browser fallback, keep its Terminal window open and press **Ctrl+C** there to stop safely. Running `python main.py` directly normally uses `http://127.0.0.1:8765`.
 
 If that port is busy:
 
@@ -77,7 +79,11 @@ Your existing simplified records are **legacy records** until a new sync enriche
 
 ## Storage and recovery
 
+The original ICT Viper source is preserved unchanged under `reference/ict-viper/` for a later comparison. It is excluded from Git and packaging and is never imported by the app. This consolidation does not merge its implementation into the maintained app.
+
 ```text
+Channel Archive.app/           Generated Mac app; Applications contains a shortcut
+reference/ict-viper/           Local, unreviewed comparison source
 .telegram-scraper.json          Private settings
 .telegram-scraper-ui.json       Private running-app connection; removed on shutdown
 telegram_scraper.session        Private Telegram login session

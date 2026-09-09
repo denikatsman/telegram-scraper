@@ -13,6 +13,7 @@ __pycache__/
 telegram_data/
 archives/
 work/
+reference/ict-viper/
 dist/
 build/
 *.egg-info/
