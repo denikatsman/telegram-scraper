@@ -122,7 +122,7 @@ def test_localhost_access_and_csrf_required(application):
     assert request(application, "/api/jobs", "POST", [], headers={})[0] == 400
     assert request(application, "/api/instance", authenticated=False)[0] == 403
     identity = payload(application, "/api/instance")
-    assert identity["app"] == "channel-archive"
+    assert identity["app"] == "telegram-scraper"
     assert identity["root"] == str(application[0].root)
 
 
@@ -189,7 +189,7 @@ def test_corrupt_library_stays_visible_as_error_and_unchanged(tmp_path):
 
 
 def test_default_root_explicit_override(monkeypatch, tmp_path):
-    monkeypatch.setenv("TELEGRAM_ARCHIVE_HOME", str(tmp_path))
+    monkeypatch.setenv("TELEGRAM_SCRAPER_HOME", str(tmp_path))
     assert default_root() == tmp_path
 
 

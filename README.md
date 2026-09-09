@@ -1,6 +1,8 @@
-# telegram-scraper · Channel Archive
+# Telegram Scraper
 
-A local app for saving and revisiting Telegram channels' posts, videos, images, and files. Keep separate channel archives under one project folder and one Telegram login. Browse and search your saved library in a Mac app or browser, play downloaded videos, sync history, capture a date range, or keep watching for new posts and edits.
+Project, package and command: `telegram-scraper`. The Python import uses `telegram_scraper` because Python identifiers cannot contain hyphens.
+
+A local app for saving and revisiting posts, videos, images, and files from Telegram channels and groups. Keep separate channel archives under one project folder and one Telegram login. Browse and search your saved library in a Mac app or browser, play downloaded videos, sync history, capture a date range, or keep watching for new posts and edits.
 
 Your archive stays on your computer. The interface runs at a local address and does not use a hosted service, analytics, external fonts, or a CDN. Telegram is contacted only when you connect or start a Telegram operation.
 
@@ -8,11 +10,11 @@ The repository is [denikatsman/telegram-scraper](https://github.com/denikatsman/
 
 ## Start the app
 
-On macOS, open **Channel Archive.app** inside the project, or its shortcut in Applications. The actual app stays inside the project alongside its archive. The setup card walks you through API details, choosing your channel and signing into Telegram. You can browse an existing library before connecting. No Terminal window is needed for everyday use.
+On macOS, open **telegram-scraper.app** inside the project, or its shortcut in Applications. The actual app stays inside the project alongside its archive. The setup card walks you through API details, choosing your channel and signing into Telegram. You can browse an existing library before connecting. No Terminal window is needed for everyday use.
 
 The Mac app starts its local server on an available port and closes it safely when you quit. If the same library is already open in a browser server, the app reuses that server and leaves it running when you close the window. **File → Show Archive Folder** opens your data folder; **⌘,** opens Settings.
 
-Opening `telegram_scraper/static/index.html` directly shows a launch screen with **Open Channel Archive**. The HTML file needs the running app to access your library; it cannot run the scraper by itself. The launch button opens the installed Mac app and never starts a scrape automatically.
+Opening `telegram_scraper/static/index.html` directly shows a launch screen with **Open Telegram Scraper**. The HTML file needs the running app to access your library; it cannot run the scraper by itself. The launch button opens the installed Mac app and never starts a scrape automatically.
 
 ### Build the Mac app once
 
@@ -23,7 +25,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python tools/build_macos_app.py --install-shortcut
-open "Channel Archive.app"
+open "telegram-scraper.app"
 ```
 
 The bundle contains the interface and backend code, and points to the Python installation and library folder selected when it was built. The Mac app remembers the library with a macOS folder bookmark so it can follow ordinary Finder moves and renames. If the folder is unavailable, it stops instead of creating a replacement empty archive. Keep the selected Python environment in place; rebuild after changing Python or updating the source. To select another library, add `--data-dir /path/to/library` to the build command. No settings, Telegram session, posts or media are copied into the app. This is a local build, not a self-contained or notarized installer for other Macs.
@@ -38,7 +40,7 @@ If that port is busy:
 python main.py serve --port 0
 ```
 
-For command-line installation, `python -m pip install .` also installs the `channel-archive` command. Installed copies use `~/.local/share/channel-archive`; source checkouts use their project folder. Use `--data-dir /path/to/library` before the command, or set `TELEGRAM_ARCHIVE_HOME`, to choose another location.
+For command-line installation, `python -m pip install .` also installs the `telegram-scraper` command. Installed copies use `~/.local/share/telegram-scraper`; source checkouts use their project folder. Use `--data-dir /path/to/library` before the command, or set `TELEGRAM_SCRAPER_HOME`, to choose another location. Upgrades still recognize the previous storage override and fallback folder, and the previous login filename, so existing libraries and saved accounts remain available.
 
 ## Connect a channel
 
@@ -47,7 +49,7 @@ For command-line installation, `python -m pip install .` also installs the `chan
 3. Save settings, then click **Connect Telegram**. The app checks your saved session and shows phone-number sign-in if needed. Telegram may send the code inside Telegram rather than by SMS. If enabled on your account, your two-step verification password is requested next.
 4. Click **Sync now**. You can browse saved posts while it runs. **Stop** keeps completed posts and downloads; another sync checks history again and retries missing attachments.
 
-An existing local library is available before signing in. API credentials are stored privately in `.telegram-scraper.json`; passwords and login codes are not saved there. The reusable Telegram login is stored in `telegram_scraper.session`. Keep both files private. They, your media, backups, and local work files are excluded from Git and distribution packages.
+An existing local library is available before signing in. API credentials are stored privately in `.telegram-scraper.json`; passwords and login codes are not saved there. The reusable Telegram login is stored in `telegram-scraper.session`. Keep both files private. They, your media, backups, and local work files are excluded from Git and distribution packages.
 
 Each archive belongs to one channel, so overlapping Telegram message IDs cannot mix libraries. An old archive without channel metadata needs its original configured channel identity before sync can safely attach it. This checkout's existing configuration has been preserved locally.
 
@@ -94,12 +96,12 @@ Your existing simplified records are **legacy records** until a new sync enriche
 The original ICT Viper source is preserved unchanged under `reference/ict-viper/`. The local comparison found no additional saved content or features worth importing. It is excluded from Git and packaging and is never imported by the app.
 
 ```text
-Channel Archive.app/           Generated Mac app; Applications contains a shortcut
-reference/ict-viper/           Local, unreviewed comparison source
+telegram-scraper.app/           Generated Mac app; Applications contains a shortcut
+reference/ict-viper/           Preserved comparison source
 .telegram-scraper.json          Private settings
 .telegram-scraper-ui.json       Private running-app connection; removed on shutdown
 .telegram-scraper-channels.json Private channel list and selected archive
-telegram_scraper.session        Private Telegram login session
+telegram-scraper.session        Private Telegram login session
 channels/<local-id>/            Additional archives, each with telegram_data/ and archives/
 telegram_data/
   messages_all.json             Saved posts, metadata and prior edits

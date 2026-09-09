@@ -394,12 +394,14 @@ class TelegramService:
                 from telethon import TelegramClient
             except ImportError:
                 raise UserError("Telegram support is not installed. Run the app's setup command and try again.") from None
-            self._client = TelegramClient(str(self.account_root / "telegram_scraper"), api_id, api_hash,
+            from .config import session_path
+            self._client = TelegramClient(str(session_path(self.account_root)), api_id, api_hash,
                                           flood_sleep_threshold=0, request_retries=3,
                                           connection_retries=3, timeout=15, catch_up=True, sequential_updates=True)
         if not self._client.is_connected():
             await self._request(self._client.connect)
-            session = self.account_root / "telegram_scraper.session"
+            from .config import session_path
+            session = session_path(self.account_root)
             if session.exists():
                 session.chmod(0o600)
         return self._client
@@ -408,7 +410,8 @@ class TelegramService:
         if not self.settings.get("api_id") or not self.settings.get("api_hash"):
             return {"authorized": False, "configured": False}
         # Merely opening the app must not create a new empty login session.
-        if self._client is None and not (self.account_root / "telegram_scraper.session").exists():
+        from .config import session_path
+        if self._client is None and not session_path(self.account_root).exists():
             return {"authorized": False, "configured": True}
         try:
             async with self._auth_lock:

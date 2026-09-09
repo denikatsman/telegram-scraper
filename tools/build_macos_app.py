@@ -27,16 +27,16 @@ def build(output, library):
     output.parent.mkdir(parents=True, exist_ok=True)
     library = library.expanduser().resolve()
     library.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(prefix=".channel-archive-build-", dir=output.parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix=".telegram-scraper-build-", dir=output.parent) as temporary:
         temporary = Path(temporary)
-        bundle = temporary / "Channel Archive.app"
+        bundle = temporary / "telegram-scraper.app"
         contents = bundle / "Contents"
-        executable = contents / "MacOS" / "ChannelArchive"
+        executable = contents / "MacOS" / "telegram-scraper"
         resources = contents / "Resources"
         executable.parent.mkdir(parents=True)
         resources.mkdir()
         subprocess.run(["xcrun", "swiftc", "-swift-version", "5", "-O", "-target",
-                        f"{os.uname().machine}-apple-macos12.0", str(source / "macos/ChannelArchive.swift"),
+                        f"{os.uname().machine}-apple-macos12.0", str(source / "macos/telegram-scraper.swift"),
                         "-o", str(executable)], check=True)
         package = resources / "app" / "telegram_scraper"
         for path in (source / "telegram_scraper").rglob("*"):
@@ -51,13 +51,13 @@ def build(output, library):
         (resources / "launcher.json").write_text(json.dumps({"python": os.path.abspath(sys.executable),
             "library": str(library), "libraryBookmark": bookmark}, indent=2))
         shutil.copy2(source / "LICENSE", resources / "LICENSE")
-        info = {"CFBundleExecutable": "ChannelArchive", "CFBundleIdentifier": "local.channelarchive.desktop",
-                "CFBundleName": "Channel Archive", "CFBundleDisplayName": "Channel Archive",
+        info = {"CFBundleExecutable": "telegram-scraper", "CFBundleIdentifier": "local.telegram-scraper.desktop",
+                "CFBundleName": "Telegram Scraper", "CFBundleDisplayName": "Telegram Scraper",
                 "CFBundlePackageType": "APPL", "CFBundleShortVersionString": __version__,
                 "CFBundleVersion": __version__, "LSMinimumSystemVersion": "12.0",
                 "NSHighResolutionCapable": True, "CFBundleIconFile": "AppIcon",
-                "CFBundleURLTypes": [{"CFBundleURLName": "Open Channel Archive", "CFBundleTypeRole": "Viewer",
-                                      "CFBundleURLSchemes": ["channel-archive"]}],
+                "CFBundleURLTypes": [{"CFBundleURLName": "Open Telegram Scraper", "CFBundleTypeRole": "Viewer",
+                                      "CFBundleURLSchemes": ["telegram-scraper"]}],
                 "NSAppTransportSecurity": {"NSAllowsArbitraryLoadsInWebContent": True, "NSAllowsLocalNetworking": True}}
         (contents / "Info.plist").write_bytes(plistlib.dumps(info))
         iconset = temporary / "AppIcon.iconset"
@@ -74,7 +74,9 @@ def build(output, library):
         subprocess.run(["codesign", "--force", "--sign", "-", str(bundle)], check=True)
         subprocess.run(["codesign", "--verify", "--deep", "--strict", str(bundle)], check=True)
         if output.exists():
-            backup = output.with_name(f"{output.stem}-previous-{uuid.uuid4().hex[:8]}.app")
+            backups = source / "work" / "app-backups"
+            backups.mkdir(parents=True, exist_ok=True)
+            backup = backups / f"telegram-scraper-previous-{uuid.uuid4().hex[:8]}.app"
             output.rename(backup)
             print(f"Previous app kept at {backup}")
         bundle.rename(output)
@@ -86,18 +88,18 @@ def build(output, library):
 def install_shortcut(bundle):
     """Keep the actual app inside the project; Applications holds a Finder alias."""
     source = Path(__file__).resolve().parents[1]
-    shortcut = Path.home() / "Applications" / "Channel Archive.app"
+    shortcut = Path.home() / "Applications" / "telegram-scraper.app"
     shortcut.parent.mkdir(parents=True, exist_ok=True)
     if bundle == shortcut:
         raise SystemExit("Build the app inside the project before installing its shortcut.")
-    temporary = shortcut.with_name(f".channel-archive-shortcut-{uuid.uuid4().hex}.alias")
+    temporary = shortcut.with_name(f".telegram-scraper-shortcut-{uuid.uuid4().hex}.alias")
     try:
-        executable = bundle / "Contents" / "MacOS" / "ChannelArchive"
+        executable = bundle / "Contents" / "MacOS" / "telegram-scraper"
         subprocess.run([str(executable), "--make-alias", str(bundle), str(temporary)], check=True)
         if shortcut.exists() or shortcut.is_symlink():
             backups = source / "work" / "app-backups"
             backups.mkdir(parents=True, exist_ok=True)
-            shortcut.rename(backups / f"Channel Archive-previous-{uuid.uuid4().hex[:8]}.app")
+            shortcut.rename(backups / f"telegram-scraper-shortcut-{uuid.uuid4().hex[:8]}.alias")
         temporary.rename(shortcut)
     finally:
         temporary.unlink(missing_ok=True)
@@ -108,7 +110,7 @@ def install_shortcut(bundle):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "Channel Archive.app")
+    parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "telegram-scraper.app")
     parser.add_argument("--data-dir", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--install-shortcut", action="store_true", help="add or refresh an Applications shortcut to this project’s app")
     args = parser.parse_args()

@@ -1,4 +1,8 @@
-# Channel Archive 1.3.0 — validation and handoff
+# Telegram Scraper 1.3.1 — validation and handoff
+
+The app now uses **Telegram Scraper** for visible branding and `telegram-scraper` for its package, command, Mac app filename, launch link and system identifier. Existing saved libraries and login sessions remain compatible.
+
+Rename validation: **236 tests and 30 subtests passed**. The rebuilt interface opens the existing 1,406 posts, renders the name at 320–1280 px, and uses the renamed direct-file launch link without JavaScript errors. Preservation checks found no changes to 416 existing data, backup, settings, login and reference files apart from the login filename.
 
 ## 1.3 Multiple channels and pasted Telegram links
 
@@ -22,7 +26,7 @@ Earlier local removals of the obsolete Windows launcher, issue templates and `.g
 
 ## 1.2.1 Launching from a file and moving the library
 
-Opening the HTML file directly previously lost its stylesheet and script because the asset URLs pointed to the filesystem root. Assets now use relative paths. A direct-file preview shows a styled launch screen with an Open Channel Archive action and avoids unavailable controls or API requests. The installed Mac app registers that launch link; it only opens the window and cannot supply credentials, change the selected library or start a scrape. The source launcher also chooses an available port.
+Opening the HTML file directly previously lost its stylesheet and script because the asset URLs pointed to the filesystem root. Assets now use relative paths. A direct-file preview shows a styled launch screen with an Open Telegram Scraper action and avoids unavailable controls or API requests. The installed Mac app registers that launch link; it only opens the window and cannot supply credentials, change the selected library or start a scrape. The source launcher also chooses an available port.
 
 The Mac bundle now stores a macOS bookmark for the chosen library. It follows ordinary folder moves and renames on reopening, and fails clearly when the folder is unavailable instead of creating an empty replacement. The Python environment still needs to remain at its configured location. This pass found the existing library had moved to the Desktop, reconnected the installed app there, and verified the original post index, settings and Telegram session were unchanged.
 

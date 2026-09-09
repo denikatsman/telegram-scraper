@@ -26,12 +26,27 @@ class ConfigError(ValueError):
 
 def default_root() -> Path:
     """Source checkouts retain their existing data; installed apps use home storage."""
-    if os.environ.get("TELEGRAM_ARCHIVE_HOME"):
-        return Path(os.environ["TELEGRAM_ARCHIVE_HOME"]).expanduser().resolve()
+    override = os.environ.get("TELEGRAM_SCRAPER_HOME") or os.environ.get("TELEGRAM_ARCHIVE_HOME")
+    if override:
+        return Path(override).expanduser().resolve()
     source = Path(__file__).resolve().parent.parent
     if (source / "pyproject.toml").is_file() and (source / "main.py").is_file():
         return source
-    return Path.home() / ".local" / "share" / "channel-archive"
+    location = Path.home() / ".local" / "share" / "telegram-scraper"
+    legacy = location.with_name("channel-archive")
+    # An upgrade must reopen the user's existing library, not an empty one.
+    return legacy if legacy.exists() and not location.exists() else location
+
+
+def session_path(root: Path) -> Path:
+    """Use the renamed login file while keeping older installations readable."""
+    current = root / "telegram-scraper.session"
+    legacy = root / "telegram_scraper.session"
+    if current.is_symlink() or legacy.is_symlink():
+        raise ConfigError("The Telegram login file is a symbolic link. Restore the original file before connecting.")
+    if current.exists() and legacy.exists():
+        raise ConfigError("Two Telegram login files were found. Keep both files and choose which saved account to use before connecting.")
+    return legacy if legacy.exists() else current
 
 
 def normalize_channel(value: str) -> str:

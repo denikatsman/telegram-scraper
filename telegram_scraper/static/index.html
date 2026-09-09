@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#f6f7fb">
-  <title>Channel Archive</title>
+  <title>Telegram Scraper</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Crect width='40' height='40' rx='12' fill='%234b55cf'/%3E%3Cpath d='M11 13h18v5H11zm2 7h14v10H13z' fill='white'/%3E%3Cpath d='M18 23h4' stroke='%234b55cf' stroke-width='2'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./app.css">
   <script src="./app.js" defer></script>
@@ -33,7 +33,7 @@
 
   <div class="app-shell">
     <aside class="sidebar" aria-label="Archive navigation">
-      <a class="brand" href="/" aria-label="Channel Archive home"><span class="brand-mark"><svg class="icon"><use href="#i-archive"/></svg></span><span>Channel<br><strong>Archive</strong></span></a>
+      <a class="brand" href="/" aria-label="Telegram Scraper home"><span class="brand-mark"><svg class="icon"><use href="#i-archive"/></svg></span><span>Telegram <br><strong>Scraper</strong></span></a>
       <div class="channel-picker"><label for="channel-select">Channel archive</label><select id="channel-select" aria-label="Choose channel archive" disabled><option value="main">Opening archive…</option></select><button class="text-button" id="channel-add" type="button">+ Add channel</button></div>
       <div class="sidebar-heading">Your library</div>
       <nav class="library-nav" aria-label="Library">
@@ -132,6 +132,6 @@
   <dialog id="range-dialog" class="range-dialog" aria-labelledby="range-title"><div class="dialog-header"><div><span class="eyebrow">FILL IN YOUR COLLECTION</span><h2 id="range-title">Fetch a date range</h2></div><button class="icon-button" data-close="range-dialog" aria-label="Close date range"><svg class="icon"><use href="#i-close"/></svg></button></div><form id="range-form" class="dialog-body"><p class="dialog-intro">Save posts from a specific period. Posts already in your archive are updated without creating duplicates.</p><div class="form-row"><div class="field"><label for="range-start">From</label><input id="range-start" type="date" required></div><div class="field"><label for="range-end">Through <span class="optional-label">(optional)</span></label><input id="range-end" type="date"><small>Leave blank to fetch a single day.</small></div></div><div class="range-note"><svg class="icon"><use href="#i-info"/></svg><p>Both dates are included. Leave the end date blank to fetch only the start day. Date ranges use UTC; displayed post times use your local time.</p></div><p id="range-feedback" class="form-feedback" role="status"></p><div class="dialog-actions"><button class="button secondary" type="button" data-close="range-dialog">Cancel</button><button class="button primary" id="range-submit" type="submit">Fetch posts <svg class="icon"><use href="#i-arrow"/></svg></button></div></form></dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
-  <noscript><div class="no-script">Channel Archive needs JavaScript to browse and sync posts. Enable JavaScript, then reload this page.</div></noscript>
+  <noscript><div class="no-script">Telegram Scraper needs JavaScript to browse and sync posts. Enable JavaScript, then reload this page.</div></noscript>
 </body>
 </html>

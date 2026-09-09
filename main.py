@@ -1,4 +1,4 @@
-"""Launch Channel Archive. Run `python3 main.py --help` for CLI commands."""
+"""Launch Telegram Scraper. Run `python3 main.py --help` for CLI commands."""
 
 from telegram_scraper.cli import main
 

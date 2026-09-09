@@ -44,11 +44,12 @@ def test_desktop_launch_is_offline_and_quit_releases_library(tmp_path):
         assert saved["pid"] == process.pid
         assert discover(root)["url"] == ready["url"]
         request = Request(ready["url"] + "/api/state", headers={
-            "Cookie": f"archive_session_{ready['url'].rsplit(':', 1)[1]}={saved['token']}"})
+            "Cookie": f"telegram-scraper-session-{ready['url'].rsplit(':', 1)[1]}={saved['token']}"})
         state = json.load(urlopen(request, timeout=5))
         assert not state["connection"]["authorized"]
         assert state["library"]["total"] == 0
         assert not (root / "telegram_scraper.session").exists()
+        assert not (root / "telegram-scraper.session").exists()
         assert not (root / ".telegram-scraper.json").exists()
     assert not (root / FILENAME).exists()
     with desktop_server(root) as (_, ready):

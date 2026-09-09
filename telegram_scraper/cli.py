@@ -17,8 +17,8 @@ from .storage import StoreError
 
 
 def parser():
-    result = argparse.ArgumentParser(description="Keep a searchable, local copy of a Telegram channel's posts and media.")
-    result.add_argument("--version", action="version", version=f"Channel Archive {__version__}")
+    result = argparse.ArgumentParser(prog="telegram-scraper", description="Save and search Telegram messages, videos and files on this computer.")
+    result.add_argument("--version", action="version", version=f"Telegram Scraper {__version__}")
     result.add_argument("--data-dir", type=Path, default=default_root(), help="folder for settings, session, archive and backups")
     sub = result.add_subparsers(dest="command")
     serve = sub.add_parser("serve", help="open the local archive interface (default)")
@@ -79,7 +79,7 @@ def main(argv=None):
                 if getattr(args, "desktop", False):
                     print(json.dumps({"event": "ready", "url": address, "owns_server": True}), flush=True)
                 else:
-                    print(f"Channel Archive {__version__}\nOpen {address}\nData folder: {root}\nPress Ctrl+C here to stop the app.", flush=True)
+                    print(f"Telegram Scraper {__version__}\nOpen {address}\nData folder: {root}\nPress Ctrl+C here to stop the app.", flush=True)
                     if not getattr(args, "no_browser", False):
                         webbrowser.open(address)
                 server.serve_forever(poll_interval=0.2)
@@ -134,7 +134,7 @@ def main(argv=None):
             print("\nStopping safely…", flush=True)
             return 130
     except KeyboardInterrupt:
-        print("\nClosing Channel Archive.")
+        print("\nClosing Telegram Scraper.")
         return 0
     except (ConfigError, StoreError, ValueError) as exc:
         print(f"Could not continue: {exc}", file=sys.stderr)

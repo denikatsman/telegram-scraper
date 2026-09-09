@@ -1,7 +1,7 @@
 import AppKit
 import WebKit
 
-final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class TelegramScraperApp: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     var window: NSWindow!
     var webView: WKWebView!
     var status: NSTextField!
@@ -16,19 +16,26 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
     var localURL: URL?
     var root: URL!
     var downloads: [ObjectIdentifier: (temporary: URL, destination: URL)] = [:]
-    let smokeReport = ProcessInfo.processInfo.environment["CHANNEL_ARCHIVE_SMOKE_REPORT"]
+    let smokeReport = ProcessInfo.processInfo.environment["TELEGRAM_SCRAPER_SMOKE_REPORT"]
     var smokeValue: [String: Any]?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         buildMenu()
         window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 1160, height: 820),
                           styleMask: [.titled, .closable, .miniaturizable, .resizable], backing: .buffered, defer: false)
-        window.title = "Channel Archive"
+        window.title = "Telegram Scraper"
         window.minSize = NSSize(width: 740, height: 540)
         window.isReleasedWhenClosed = false
         window.delegate = self
         window.center()
-        if smokeReport == nil { window.setFrameAutosaveName("ChannelArchiveMainWindow") }
+        if smokeReport == nil {
+            let key = "NSWindow Frame telegram-scraper-main-window"
+            if UserDefaults.standard.object(forKey: key) == nil,
+               let previous = UserDefaults.standard.persistentDomain(forName: "local.channelarchive.desktop")?["NSWindow Frame ChannelArchiveMainWindow"] {
+                UserDefaults.standard.set(previous, forKey: key)
+            }
+            window.setFrameAutosaveName("telegram-scraper-main-window")
+        }
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = .nonPersistent()
         webView = WKWebView(frame: .zero, configuration: configuration)
@@ -67,11 +74,11 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
         let appMenu = NSMenu()
         let appItem = NSMenuItem()
         appItem.submenu = appMenu
-        appMenu.addItem(withTitle: "About Channel Archive", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
+        appMenu.addItem(withTitle: "About Telegram Scraper", action: #selector(NSApplication.orderFrontStandardAboutPanel(_:)), keyEquivalent: "")
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",").target = self
         appMenu.addItem(.separator())
-        appMenu.addItem(withTitle: "Quit Channel Archive", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        appMenu.addItem(withTitle: "Quit Telegram Scraper", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         menu.addItem(appItem)
         let fileMenu = NSMenu(title: "File")
         fileMenu.addItem(withTitle: "Show Archive Folder", action: #selector(showArchive), keyEquivalent: "").target = self
@@ -97,7 +104,7 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
             fail("The app is missing its launch settings. Rebuild it with tools/build_macos_app.py.")
             return
         }
-        let override = ProcessInfo.processInfo.environment["CHANNEL_ARCHIVE_DATA_DIR"]
+        let override = ProcessInfo.processInfo.environment["TELEGRAM_SCRAPER_DATA_DIR"] ?? ProcessInfo.processInfo.environment["CHANNEL_ARCHIVE_DATA_DIR"]
         if let override = override {
             root = URL(fileURLWithPath: override, isDirectory: true).standardizedFileURL
         } else if let encoded = config["libraryBookmark"] {
@@ -105,14 +112,14 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
             guard let bookmark = Data(base64Encoded: encoded),
                   let resolved = try? URL(resolvingBookmarkData: bookmark, options: .withoutUI, relativeTo: nil, bookmarkDataIsStale: &stale),
                   isDirectory(resolved) else {
-                fail("Your archive folder is unavailable. Reconnect its drive or restore the folder, then reopen Channel Archive. Your saved library has not been replaced.")
+                fail("Your archive folder is unavailable. Reconnect its drive or restore the folder, then reopen Telegram Scraper. Your saved library has not been replaced.")
                 return
             }
             root = resolved.standardizedFileURL
         } else {
             root = URL(fileURLWithPath: library, isDirectory: true).standardizedFileURL
             guard isDirectory(root) else {
-                fail("Your archive folder has moved or is unavailable. Rebuild Channel Archive from the folder’s new location to reconnect your saved library.")
+                fail("Your archive folder has moved or is unavailable. Rebuild Telegram Scraper from the folder’s new location to reconnect your saved library.")
                 return
             }
         }
@@ -150,7 +157,7 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
                 guard let self = self else { return }
                 if self.quitting { NSApp.reply(toApplicationShouldTerminate: true); return }
                 if self.ready && !self.ownsServer && process.terminationStatus == 0 { return }
-                self.fail(self.errorOutput.isEmpty ? "The local archive server stopped. Reopen Channel Archive to try again. Your saved files are kept." : self.errorOutput)
+                self.fail(self.errorOutput.isEmpty ? "The local archive server stopped. Reopen Telegram Scraper to try again. Your saved files are kept." : self.errorOutput)
             }
         }
         backend = process
@@ -200,7 +207,7 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
     func application(_ application: NSApplication, open urls: [URL]) {
         // The launch link only brings up this app. It cannot choose a library,
         // supply credentials, or trigger scraping from an external page.
-        guard urls.contains(where: { $0.scheme == "channel-archive" && $0.host == "open" &&
+        guard urls.contains(where: { $0.scheme == "telegram-scraper" && $0.host == "open" &&
             ["", "/"].contains($0.path) && $0.query == nil && $0.fragment == nil &&
             $0.user == nil && $0.password == nil && $0.port == nil }) else { return }
         window?.makeKeyAndOrderFront(nil)
@@ -250,9 +257,9 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) { download.delegate = self }
 
     func download(_ download: WKDownload, decideDestinationUsing response: URLResponse, suggestedFilename: String, completionHandler: @escaping (URL?) -> Void) {
-        if smokeReport != nil, let path = ProcessInfo.processInfo.environment["CHANNEL_ARCHIVE_SMOKE_EXPORT"] {
+        if smokeReport != nil, let path = ProcessInfo.processInfo.environment["TELEGRAM_SCRAPER_SMOKE_EXPORT"] {
             let destination = URL(fileURLWithPath: path)
-            let temporary = destination.deletingLastPathComponent().appendingPathComponent(".channel-archive-\(UUID().uuidString).partial")
+            let temporary = destination.deletingLastPathComponent().appendingPathComponent(".telegram-scraper-\(UUID().uuidString).partial")
             downloads[ObjectIdentifier(download)] = (temporary, destination)
             completionHandler(temporary)
             return
@@ -262,7 +269,7 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
         panel.canCreateDirectories = true
         panel.beginSheetModal(for: window) { choice in
             guard choice == .OK, let destination = panel.url else { completionHandler(nil); return }
-            let temporary = destination.deletingLastPathComponent().appendingPathComponent(".channel-archive-\(UUID().uuidString).partial")
+            let temporary = destination.deletingLastPathComponent().appendingPathComponent(".telegram-scraper-\(UUID().uuidString).partial")
             self.downloads[ObjectIdentifier(download)] = (temporary, destination)
             completionHandler(temporary)
         }
@@ -325,7 +332,7 @@ final class ChannelArchiveApp: NSObject, NSApplicationDelegate, NSWindowDelegate
                     if let tiff = image?.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiff), let png = bitmap.representation(using: .png, properties: [:]) {
                         try? png.write(to: URL(fileURLWithPath: report + ".png"))
                     }
-                    if ProcessInfo.processInfo.environment["CHANNEL_ARCHIVE_SMOKE_EXPORT"] != nil {
+                    if ProcessInfo.processInfo.environment["TELEGRAM_SCRAPER_SMOKE_EXPORT"] != nil {
                         self.smokeValue = value
                         webView.evaluateJavaScript("document.getElementById('export-button').click()")
                         DispatchQueue.main.asyncAfter(deadline: .now() + 20) {
@@ -396,7 +403,7 @@ if CommandLine.arguments.count == 3 && CommandLine.arguments[1] == "--render-ico
         exit(1)
     }
 } else {
-    let delegate = ChannelArchiveApp()
+    let delegate = TelegramScraperApp()
     app.delegate = delegate
     app.setActivationPolicy(.regular)
     app.run()

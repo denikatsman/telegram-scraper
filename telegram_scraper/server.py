@@ -614,11 +614,11 @@ class LocalServer(ThreadingHTTPServer):
         self.runtime = runtime
         self.token = secrets.token_urlsafe(32)
         super().__init__(address, Handler)
-        self.cookie_name = f"archive_session_{self.server_address[1]}"
+        self.cookie_name = f"telegram-scraper-session-{self.server_address[1]}"
 
 
 class Handler(BaseHTTPRequestHandler):
-    server_version = "ChannelArchive"
+    server_version = "telegram-scraper"
 
     def log_message(self, format, *args):
         pass
@@ -702,7 +702,7 @@ class Handler(BaseHTTPRequestHandler):
             elif path == "/api/instance":
                 import os
                 from . import __version__
-                self.json_response({"app": "channel-archive", "root": str(self.app.root), "pid": os.getpid(), "version": __version__})
+                self.json_response({"app": "telegram-scraper", "root": str(self.app.root), "pid": os.getpid(), "version": __version__})
             elif path == "/api/posts":
                 params = {key: value[-1] for key, value in parse_qs(urlparse(self.path).query).items()}
                 self.json_response(self.library_call(self.app.posts(params)))

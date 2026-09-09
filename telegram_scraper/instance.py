@@ -43,13 +43,13 @@ def discover(root: Path):
         if not isinstance(token, str) or not re.fullmatch(r"[A-Za-z0-9_-]{20,128}", token) or type(pid) is not int or pid <= 0:
             return None
         address = f"http://127.0.0.1:{url.port}"
-        request = Request(address + "/api/instance", headers={"Cookie": f"archive_session_{url.port}={token}"})
+        request = Request(address + "/api/instance", headers={"Cookie": f"telegram-scraper-session-{url.port}={token}"})
         with build_opener(ProxyHandler({}), _NoRedirect()).open(request, timeout=2) as response:
             payload = response.read(8193)
             if len(payload) > 8192:
                 return None
             identity = json.loads(payload)
-        if identity.get("app") != "channel-archive" or identity.get("root") != str(root) or identity.get("pid") != pid:
+        if identity.get("app") != "telegram-scraper" or identity.get("root") != str(root) or identity.get("pid") != pid:
             return None
         return {"url": address, "pid": pid, "version": identity.get("version")}
     except (OSError, ValueError, TypeError, AttributeError):
