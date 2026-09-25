@@ -1,0 +1,17 @@
+{
+  "number": 1,
+  "requested_title": "Audit race conditions",
+  "project_id": "fb908251-25d2-4fc6-a4f7-06037e03f208",
+  "project_root": "/Users/xxx/GitHub/telegram-scraper",
+  "environment": "local",
+  "model": "gpt-6-astra",
+  "reasoning_effort": "max",
+  "prompt_sha256": "de8b515d87e652ab5a5c5c7a0bca8c197f11d4218a0701270e3ce9edc8746a73",
+  "prompt": "1. Audit this repo for race conditions. Other parallel threads are auditing stale-state, lost-update, and out-of-order async bugs; duplicate execution, unsafe retries, and idempotency bugs; partial-failure and atomicity bugs; invalid state transitions and broken invariants; lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references; persistence bugs, data loss, migration failures, and corrupted or partially written state; error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/01-race-conditions.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+  "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/01-race-conditions.md",
+  "source_fingerprint_sha256": "242ed2ba644b15c5289ed13be6cd20403eb6f72a8e57a2b0e9f3cc881ae007c1",
+  "launch_result": {
+    "threadId": "01a0b860-200d-7b50-9227-04607bf7f007",
+    "hostId": "local"
+  }
+}

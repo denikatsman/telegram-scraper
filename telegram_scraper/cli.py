@@ -115,7 +115,10 @@ def main(argv=None):
             result = runtime.call(runtime.authenticate("connect", {}))
             if not result.get("authorized"):
                 raise ValueError("Sign in first with python3 main.py login, or use Settings in the browser app.")
-        runtime.call(runtime.start_job(payload))
+        admission = runtime.call(runtime.start_job(payload))
+        if admission.get("capture_started") is False:
+            print("Capture did not start. This channel already belongs to archive(s): " + ", ".join(admission["existing_archive_ids"]) + ". Open the chosen archive explicitly before syncing.")
+            return 1
         previous = None
         try:
             while True:

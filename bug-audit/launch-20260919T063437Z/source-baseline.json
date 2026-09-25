@@ -1,0 +1,409 @@
+{
+  "created_at": "2026-09-19T06:34:37.673721+00:00",
+  "project_root": "/Users/xxx/GitHub/telegram-scraper",
+  "project_id": "fb908251-25d2-4fc6-a4f7-06037e03f208",
+  "environment": "local",
+  "model": "gpt-6-astra",
+  "reasoning_effort": "max",
+  "head": "188afe9fcfa3f9b1963edc23f5e46e143abd2632",
+  "branch": "main",
+  "remote_heads": "188afe9fcfa3f9b1963edc23f5e46e143abd2632\trefs/heads/main",
+  "prelaunch_git_status": " M Launch.command\n M README.md\n M RELEASE_NOTES.md\n M pyproject.toml\n M telegram_scraper/__init__.py\n M telegram_scraper/engine.py\n M telegram_scraper/server.py\n M tests/test_engine.py\n M tools/build_macos_app.py\n?? AGENTS.md\n?? APP_DELIVERY.md\n?? tests/test_login.py\n?? tools/install-app.py\n",
+  "git_index_sha256": "583d0f7205de302157fb7edd6a28b7871f07315d1f5c8f1ec7d7456e50cac079",
+  "files": [
+    {
+      "path": ".gitignore",
+      "bytes": 367,
+      "mode": 420,
+      "sha256": "28343b979d63c115ccaa5e47eda1e35779df4ccdad518da4b4968dcdd27df45e"
+    },
+    {
+      "path": "AGENTS.md",
+      "bytes": 484,
+      "mode": 420,
+      "sha256": "4cc14e0b5085515196473bfad7c064664ce15d69c424d606c06ddda191c77e8a"
+    },
+    {
+      "path": "APP_DELIVERY.md",
+      "bytes": 1802,
+      "mode": 420,
+      "sha256": "acd84b9b1b93b38d2b72f35d59c26125d0df8d1d8b105ccce7a0c70c6b8547b8"
+    },
+    {
+      "path": "Archive-check.py",
+      "bytes": 212,
+      "mode": 420,
+      "sha256": "62d57ecf77123b0e95a58e9f95ba330237a25a1cdaa4bed1381ae2c834e21022"
+    },
+    {
+      "path": "Choose-Date-Range.py",
+      "bytes": 211,
+      "mode": 420,
+      "sha256": "4afb5e2cfc14499c6347927e219214b3f7a232803642d041e59e3ac45725419a"
+    },
+    {
+      "path": "LICENSE",
+      "bytes": 1298,
+      "mode": 420,
+      "sha256": "18926861b54c8c07f69f362c3b7ed77179f5d3b857565fdaca0794395f82c03c"
+    },
+    {
+      "path": "Launch.command",
+      "bytes": 425,
+      "mode": 493,
+      "sha256": "6f1f806ffe4660bfa27da5bbb543af472ba5b9222ee9bed9337a1d0f573a3b12"
+    },
+    {
+      "path": "Login.py",
+      "bytes": 211,
+      "mode": 420,
+      "sha256": "d6e918cef9dcb8512d1b7983c4d55b7bd22c0128b1ebf0557a43cbbf2e239f48"
+    },
+    {
+      "path": "MANIFEST.in",
+      "bytes": 532,
+      "mode": 420,
+      "sha256": "1212f9ace81271876dacfc208a116581c3d4cbbe80445142e4324a4ff01c332f"
+    },
+    {
+      "path": "README.md",
+      "bytes": 18004,
+      "mode": 420,
+      "sha256": "8f92e2c4fdeca18f01c789534b68ff81844716b67797d09dfcfb92566e0b899c"
+    },
+    {
+      "path": "RELEASE_NOTES.md",
+      "bytes": 22914,
+      "mode": 420,
+      "sha256": "f1cd03d5f9991b3242a8d5e6182c08ff9118aa10e83e95c7b80e2534a6a6558c"
+    },
+    {
+      "path": "Real-time.py",
+      "bytes": 211,
+      "mode": 420,
+      "sha256": "d2d0efe4bb58cd39f068f66b9e577c3c6496f57ab71543bbdd5388fc14206300"
+    },
+    {
+      "path": "Simple-check.py",
+      "bytes": 211,
+      "mode": 420,
+      "sha256": "f5430d5c5312d8fd11dc326daff6a9981421d0c6b375c37d3f6e9bf9f6b4af00"
+    },
+    {
+      "path": "Sync.py",
+      "bytes": 210,
+      "mode": 420,
+      "sha256": "9eb2709832897edf8ff33705ccb63322e4704615d07cb4581318f83c39ea8097"
+    },
+    {
+      "path": "macos/telegram-scraper.swift",
+      "bytes": 22573,
+      "mode": 420,
+      "sha256": "fb32433f1231e7b263968ba11fa93e3936d62e2f562e36a03fb62c25218df07d"
+    },
+    {
+      "path": "main.py",
+      "bytes": 175,
+      "mode": 420,
+      "sha256": "b4d2570b1c2d991e034073006990767db4922dfc7cafe6f37fe306f45ce7372a"
+    },
+    {
+      "path": "pyproject.toml",
+      "bytes": 706,
+      "mode": 420,
+      "sha256": "6bf2b0cd05f19e6317d06d70cea40d78fe0aac8d24071ffe1e343d6e24c42ae8"
+    },
+    {
+      "path": "readme",
+      "bytes": 258,
+      "mode": 420,
+      "sha256": "3586b52831b10350099288505bddc32cd4399678e87afc5f241ed5f6446106c4"
+    },
+    {
+      "path": "reference/README.md",
+      "bytes": 565,
+      "mode": 420,
+      "sha256": "52ebb8b3cf24d127f88297f624c7c35ecf650b6ce618fd9f4744a70d6f720166"
+    },
+    {
+      "path": "requirements.txt",
+      "bytes": 18,
+      "mode": 420,
+      "sha256": "3fb109baa42132312484251f594c012c2d689e81610632b0e6dbf36f22dba648"
+    },
+    {
+      "path": "telegram_scraper/__init__.py",
+      "bytes": 77,
+      "mode": 420,
+      "sha256": "e98d8757770c2be993b6f29970f1a8db338c3b083cd66e27ee952cb6511f106b"
+    },
+    {
+      "path": "telegram_scraper/__main__.py",
+      "bytes": 48,
+      "mode": 420,
+      "sha256": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d"
+    },
+    {
+      "path": "telegram_scraper/channels.py",
+      "bytes": 4732,
+      "mode": 420,
+      "sha256": "e191b8f3513a055f78fd4c60af5cfacc65e364793a0f23c62d3281fefdf0f053"
+    },
+    {
+      "path": "telegram_scraper/cli.py",
+      "bytes": 7581,
+      "mode": 420,
+      "sha256": "b8c72d51acd277ced739b5737d335a18f0792305f932d3f27854086d952c6d6b"
+    },
+    {
+      "path": "telegram_scraper/config.py",
+      "bytes": 6788,
+      "mode": 420,
+      "sha256": "8f1a9e2921d4fae1814b6c309b196a981843acbefd6db9288a3879b65dbc314a"
+    },
+    {
+      "path": "telegram_scraper/engine.py",
+      "bytes": 64931,
+      "mode": 420,
+      "sha256": "21b74741de464a5d62a86426be7c847307dcd280dd5c8861c39c6929dcd15127"
+    },
+    {
+      "path": "telegram_scraper/enrichment.py",
+      "bytes": 30927,
+      "mode": 420,
+      "sha256": "d9fa66f9ed7f87bfbec6e22c53b0c477ba68bfcc40e3bf35beee31832d03193a"
+    },
+    {
+      "path": "telegram_scraper/evidence.py",
+      "bytes": 45296,
+      "mode": 420,
+      "sha256": "d11fd092b3ca52a9e074d6c20b659fa856a13b1ee0d4aa4ff49c60327ac6edee"
+    },
+    {
+      "path": "telegram_scraper/instance.py",
+      "bytes": 3421,
+      "mode": 420,
+      "sha256": "b2968986f7ebc8e026e1d8b453211dc663269c1744724e36181778ad880d2ce1"
+    },
+    {
+      "path": "telegram_scraper/integrity.py",
+      "bytes": 15525,
+      "mode": 420,
+      "sha256": "9d5f55fa91b2d71ecdd53b1088999a305e8f5b48b4d07ef289ec87edd4a03591"
+    },
+    {
+      "path": "telegram_scraper/links.py",
+      "bytes": 5028,
+      "mode": 420,
+      "sha256": "933db644cc8bfefcdb8e4f16f00882487b0c81481c2187d049e3a929c37dd9b9"
+    },
+    {
+      "path": "telegram_scraper/server.py",
+      "bytes": 42117,
+      "mode": 420,
+      "sha256": "6c507efad821a7096cd1f152ceba6c34fd2ecede27b366c1841bb5cac56b899e"
+    },
+    {
+      "path": "telegram_scraper/static/app.css",
+      "bytes": 30726,
+      "mode": 420,
+      "sha256": "5493da906129fddcac3a7c63ff3a2259956e3d83e856ef675de9e3c29d1d124c"
+    },
+    {
+      "path": "telegram_scraper/static/app.js",
+      "bytes": 62646,
+      "mode": 420,
+      "sha256": "43d5b903adc3456665c5df1d300ecfd55aeecd630665c040de83db3f47f39785"
+    },
+    {
+      "path": "telegram_scraper/static/index.html",
+      "bytes": 21518,
+      "mode": 420,
+      "sha256": "b6f7b3009d5c17089fa2ddbd13967906b3b8bad09e4ddae082be482a540b0e28"
+    },
+    {
+      "path": "telegram_scraper/storage.py",
+      "bytes": 32900,
+      "mode": 420,
+      "sha256": "aa69bef55bab88114acc4f332cf32553f5e6a4aa5a391012e7d043189608af6d"
+    },
+    {
+      "path": "tests/test_app.py",
+      "bytes": 11508,
+      "mode": 420,
+      "sha256": "49373d46faa380752a471d9b89990fb1687d027a47cf946ca9ffde1d5b2271d2"
+    },
+    {
+      "path": "tests/test_channels.py",
+      "bytes": 12778,
+      "mode": 420,
+      "sha256": "97210f6ed28c59c86047e6e15ed734cad3817ef00ed18fd95ccbf8aad75644d7"
+    },
+    {
+      "path": "tests/test_desktop.py",
+      "bytes": 4588,
+      "mode": 420,
+      "sha256": "98c6bdebfd36e39e0e377bad2a95282e94c14b0de51b263d7672b0a7943fbfe5"
+    },
+    {
+      "path": "tests/test_engine.py",
+      "bytes": 42050,
+      "mode": 420,
+      "sha256": "f7d2d7536a58276e212e436027925d439c75cbc8805437a66ebedaa2d8905aad"
+    },
+    {
+      "path": "tests/test_enrichment.py",
+      "bytes": 20746,
+      "mode": 420,
+      "sha256": "dfd79330b764c47cb3f2e6c2a7d62c1c8c8d0eae7660c7ae14c9610ef102997a"
+    },
+    {
+      "path": "tests/test_evidence.py",
+      "bytes": 20778,
+      "mode": 420,
+      "sha256": "aa7a869bd7eed20516055e2daaed75882ba5a25bd5c66c712c87d34839bed3e5"
+    },
+    {
+      "path": "tests/test_integrity.py",
+      "bytes": 10198,
+      "mode": 420,
+      "sha256": "bc2d0c13aebeeee51ea2f202c057a4329ba6cc82e5ea0399446710f0b5d3f25f"
+    },
+    {
+      "path": "tests/test_login.py",
+      "bytes": 6599,
+      "mode": 420,
+      "sha256": "1e727ba8bf7f6f8e94b8359aabe2af899ff3ad0a02f6d7c44bb6a343af6535d7"
+    },
+    {
+      "path": "tests/test_naming.py",
+      "bytes": 3173,
+      "mode": 420,
+      "sha256": "05298297a481bf7ccabb338efc2da8db13cbfdd46765f764a578d8a7c0c6e1a3"
+    },
+    {
+      "path": "tests/test_source_api.py",
+      "bytes": 11469,
+      "mode": 420,
+      "sha256": "a2709f61c51e3d20a9829d97a8810bfe3a26b614dc38dd6e0b1f99994916571b"
+    },
+    {
+      "path": "tests/test_storage.py",
+      "bytes": 18868,
+      "mode": 420,
+      "sha256": "901bc94c844f9e96db19b421bb7c0c2e85cb2422a5cbe83d6fc9c69e99656917"
+    },
+    {
+      "path": "tools/build_macos_app.py",
+      "bytes": 5917,
+      "mode": 420,
+      "sha256": "6ed21b3594291141a2aa2910c1a8c813bb61a1e3203fb0159ddaef90242f3bd9"
+    },
+    {
+      "path": "tools/install-app.py",
+      "bytes": 13247,
+      "mode": 420,
+      "sha256": "061e520b14b08294efe0f7e2e9640b11206d07bed96868e54a1c5bc20eba2ecc"
+    }
+  ],
+  "source_fingerprint_sha256": "242ed2ba644b15c5289ed13be6cd20403eb6f72a8e57a2b0e9f3cc881ae007c1",
+  "preserved_reference_files": [
+    {
+      "path": "reference/ict-viper/Archive-check.py",
+      "bytes": 8860,
+      "sha256": "d7feb49e862553c724fd0d4124df63363b780c594e78496dd618f2e289838398"
+    },
+    {
+      "path": "reference/ict-viper/Choose-Date-Range.py",
+      "bytes": 11187,
+      "sha256": "996683690fefe8b7766e65444ea32482f9423efeabff56de9087342f5bb1b2af"
+    },
+    {
+      "path": "reference/ict-viper/Login.py",
+      "bytes": 389,
+      "sha256": "77a8327ba11f9f22bcb8c0c1e2f91e4051278c4d5c4208eb9b233f2c53539c66"
+    },
+    {
+      "path": "reference/ict-viper/Real-time.py",
+      "bytes": 5309,
+      "sha256": "bfd63c1db3746c4039aae03ce1499accaf2a19cc621e8b5f4ec63668f2960b2b"
+    },
+    {
+      "path": "reference/ict-viper/Simple-check.py",
+      "bytes": 773,
+      "sha256": "cf91d067495fd3d4d669608d272c7fea6b265443e7ef16eae2cdaa41454ba44e"
+    },
+    {
+      "path": "reference/ict-viper/Sync.py",
+      "bytes": 8848,
+      "sha256": "093f57fd77a53134c0dc070aa943e150dc1b75dac36536300c8e1e960fb4732b"
+    },
+    {
+      "path": "reference/ict-viper/readme",
+      "bytes": 1555,
+      "sha256": "91a8265dd723e6d59c9047588205a6e4958eb6279f87b98e42a487b0266d5b8d"
+    }
+  ],
+  "evidence": {
+    "latest_project_task": "01a08532-2ffc-77b3-9f31-4a0dc94f7481",
+    "relocation_task": "01a08436-cb08-7411-aa5f-31af2813aeaa",
+    "latest_installer_task": "01a08a6a-f7d6-7681-b572-f32c78781839",
+    "prior_status_record": "/Users/xxx/ChatGPT/Merging and Cleaning Up/launcher-audit/repository-status-after.json",
+    "prior_status_matches_exactly": true,
+    "other_related_checkout_found": false,
+    "worktree_inventory": "worktree /Users/xxx/GitHub/telegram-scraper\nHEAD 188afe9fcfa3f9b1963edc23f5e46e143abd2632\nbranch refs/heads/main\n\n"
+  },
+  "prompt_source": "/Users/xxx/.codex/attachments/3ad4f5fc-2c38-456c-92b5-a1ecc03f76bb/Pasted text.txt",
+  "prompt_source_sha256": "1a4a2f172537e73725fa9c84e325aad73038be114a441aa8adcd3e3c45c2be61",
+  "prompts": [
+    {
+      "number": 1,
+      "prompt": "1. Audit this repo for race conditions. Other parallel threads are auditing stale-state, lost-update, and out-of-order async bugs; duplicate execution, unsafe retries, and idempotency bugs; partial-failure and atomicity bugs; invalid state transitions and broken invariants; lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references; persistence bugs, data loss, migration failures, and corrupted or partially written state; error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/01-race-conditions.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+      "sha256": "de8b515d87e652ab5a5c5c7a0bca8c197f11d4218a0701270e3ce9edc8746a73",
+      "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/01-race-conditions.md"
+    },
+    {
+      "number": 2,
+      "prompt": "2. Audit this repo for stale-state, lost-update, and out-of-order async bugs. Other parallel threads are auditing race conditions; duplicate execution, unsafe retries, and idempotency bugs; partial-failure and atomicity bugs; invalid state transitions and broken invariants; lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references; persistence bugs, data loss, migration failures, and corrupted or partially written state; error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/02-stale-state-lost-updates.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+      "sha256": "927576a7bafb18c2c56e234284ae3de9a5727466152e18d53f6c88251631b9e6",
+      "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/02-stale-state-lost-updates.md"
+    },
+    {
+      "number": 3,
+      "prompt": "3. Audit this repo for duplicate execution, unsafe retries, and idempotency bugs. Other parallel threads are auditing race conditions; stale-state, lost-update, and out-of-order async bugs; partial-failure and atomicity bugs; invalid state transitions and broken invariants; lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references; persistence bugs, data loss, migration failures, and corrupted or partially written state; error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/03-retries-idempotency.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+      "sha256": "8193f3c4937934eb300f68374d21ecf8cddb6887e498fe2f68e8da419eaa0334",
+      "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/03-retries-idempotency.md"
+    },
+    {
+      "number": 4,
+      "prompt": "4. Audit this repo for partial-failure and atomicity bugs. Other parallel threads are auditing race conditions; stale-state, lost-update, and out-of-order async bugs; duplicate execution, unsafe retries, and idempotency bugs; invalid state transitions and broken invariants; lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references; persistence bugs, data loss, migration failures, and corrupted or partially written state; error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/04-atomicity-partial-failure.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+      "sha256": "1d4aa197cbd8b5e16bf778fdd24c3629572bf953bbb9fb8649a9b6b91dde0fa3",
+      "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/04-atomicity-partial-failure.md"
+    },
+    {
+      "number": 5,
+      "prompt": "5. Audit this repo for invalid state transitions and broken invariants. Other parallel threads are auditing race conditions; stale-state, lost-update, and out-of-order async bugs; duplicate execution, unsafe retries, and idempotency bugs; partial-failure and atomicity bugs; lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references; persistence bugs, data loss, migration failures, and corrupted or partially written state; error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/05-state-invariants.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+      "sha256": "da13c4fe7feaae3a99adff6b9cffc6d844de2987a6da746c406b7801af329325",
+      "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/05-state-invariants.md"
+    },
+    {
+      "number": 6,
+      "prompt": "6. Audit this repo for lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references. Other parallel threads are auditing race conditions; stale-state, lost-update, and out-of-order async bugs; duplicate execution, unsafe retries, and idempotency bugs; partial-failure and atomicity bugs; invalid state transitions and broken invariants; persistence bugs, data loss, migration failures, and corrupted or partially written state; error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/06-lifecycle-cleanup.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+      "sha256": "3080d6ffec1f73ab17b5f88c1c147d3b09b25b755c9f67ddcc1918956b25f36d",
+      "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/06-lifecycle-cleanup.md"
+    },
+    {
+      "number": 7,
+      "prompt": "7. Audit this repo for persistence bugs, data loss, migration failures, and corrupted or partially written state. Other parallel threads are auditing race conditions; stale-state, lost-update, and out-of-order async bugs; duplicate execution, unsafe retries, and idempotency bugs; partial-failure and atomicity bugs; invalid state transitions and broken invariants; lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references; error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/07-persistence-migrations.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+      "sha256": "3bc73295bcdf6cb35acd2a886c37bc4fd3d9e4dae798d895f138555280c69c38",
+      "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/07-persistence-migrations.md"
+    },
+    {
+      "number": 8,
+      "prompt": "8. Audit this repo for error-handling bugs, including swallowed errors, false success states, incomplete recovery, and cleanup failures. Other parallel threads are auditing race conditions; stale-state, lost-update, and out-of-order async bugs; duplicate execution, unsafe retries, and idempotency bugs; partial-failure and atomicity bugs; invalid state transitions and broken invariants; lifecycle bugs, including leaked listeners, timers, subscriptions, observers, workers, and stale references; persistence bugs, data loss, migration failures, and corrupted or partially written state. Focus deeply on your assigned area and avoid duplicating their work except where overlap is necessary to explain a concrete bug. Report only concrete, code-backed findings. Do not modify production code. Write your final verified findings only to bug-audit/08-error-handling-recovery.md. That path is reserved for this audit thread; do not write to any other audit thread's file.",
+      "sha256": "4ed3b2a3831c7cbc3132eda05b4fd7fda6bbcc95208a40260bcf76aeef14bb64",
+      "report_path": "/Users/xxx/GitHub/telegram-scraper/bug-audit/08-error-handling-recovery.md"
+    }
+  ],
+  "preservation": "All tasks run in the same existing folder. No checkout, stash, commit, push, copy, app rebuild, or cleanup was performed. Reports stay in bug-audit and must be preserved before any later cleanup. Ignored data, archives, reference source, and app bundles remain in place; runtime data and generated bundles are not included in the source fingerprint."
+}

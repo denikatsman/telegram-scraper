@@ -1,0 +1,14 @@
+✔ TS-017: rendered downloads retain main/child library and one download query (211.392125ms)
+✔ TS-023: two stale forms patch only changed fields; reverted/no-op/blank hash (16.661042ms)
+✔ TS-023: validation failure keeps edits pending and credential patch omits untouched fields (6.123125ms)
+✔ TS-025/026: equal job counters, failed refresh retry and Watch media completion (13.329416ms)
+✔ TS-026: superseded, aborted and wrong-library responses cannot acknowledge (2.246583ms)
+✔ TS-022: duplicate Sync only offers an explicit Open request and never retries Sync (13.001458ms)
+ℹ tests 6
+ℹ suites 0
+ℹ pass 6
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 570.277791

@@ -1,0 +1,15 @@
+{
+  "original_reports_and_final_unchanged": {
+    "bug-audit/01-race-conditions.md": true,
+    "bug-audit/02-stale-state-lost-updates.md": true,
+    "bug-audit/03-retries-idempotency.md": true,
+    "bug-audit/04-atomicity-partial-failure.md": true,
+    "bug-audit/05-state-invariants.md": true,
+    "bug-audit/06-lifecycle-cleanup.md": true,
+    "bug-audit/07-persistence-migrations.md": true,
+    "bug-audit/08-error-handling-recovery.md": true,
+    "bug-audit/FINAL.md": true
+  },
+  "head": "188afe9fcfa3f9b1963edc23f5e46e143abd2632",
+  "index_sha256": "583d0f7205de302157fb7edd6a28b7871f07315d1f5c8f1ec7d7456e50cac079"
+}

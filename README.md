@@ -10,7 +10,7 @@ The repository is [denikatsman/telegram-scraper](https://github.com/denikatsman/
 
 ## Start the app
 
-On macOS, open **telegram-scraper.app** inside the project, or its shortcut in Applications. The actual app stays inside the project alongside its archive. The setup card walks you through API details, choosing your channel and signing into Telegram. You can browse an existing library before connecting. No Terminal window is needed for everyday use.
+On macOS, open **telegram-scraper.app** in `~/Applications`. The daily app is installed in `~/Applications`; its archive remains in the selected library folder. The setup card walks you through API details, choosing your channel and signing into Telegram. You can browse an existing library before connecting. No Terminal window is needed for everyday use.
 
 The Mac app starts its local server on an available port and closes it safely when you quit. If the same library is already open in a browser server, the app reuses that server and leaves it running when you close the window. **File → Show Archive Folder** opens your data folder; **⌘,** opens Settings.
 
@@ -25,7 +25,7 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python tools/build_macos_app.py --install-shortcut
-open "telegram-scraper.app"
+open "$HOME/Applications/telegram-scraper.app"
 ```
 
 The bundle contains the interface and backend code, and points to the Python installation and library folder selected when it was built. The Mac app remembers the library with a macOS folder bookmark so it can follow ordinary Finder moves and renames. If the folder is unavailable, it stops instead of creating a replacement empty archive. Keep the selected Python environment in place; rebuild after changing Python or updating the source. To select another library, add `--data-dir /path/to/library` to the build command. No settings, Telegram session, posts or media are copied into the app. This is a local build, not a self-contained or notarized installer for other Macs.
@@ -77,6 +77,8 @@ For command-line use, run commands against the project root; they use the channe
 
 Videos play when their format is supported by your browser. Use the file's download link to open other formats in a local player. Missing media stays visible and can be retried by syncing with media downloads enabled.
 
+YouTube and other external links remain in the saved post and source metadata. If Telegram supplies a video, image or document with the link preview, the app downloads that Telegram-provided media when downloads are enabled. Some YouTube previews include an MP4 video as well as a thumbnail. The app does not fetch videos directly from YouTube, and a saved preview does not guarantee the original video's full quality or availability.
+
 ## What a scrape preserves
 
 New captures save the full fields of each returned Telegram object and Telethon's serialized TL representation **before** processing the post or downloading its media. Binary fields in JSON use an explicit base64 representation. Serialized TL objects are not the original encrypted network packets. The source database retains distinct observations, including counter/reaction changes that would not create a visible text revision, and records each observation's run and capture time.
@@ -96,7 +98,7 @@ Your existing simplified records are **legacy records** until a new sync enriche
 The original ICT Viper source is preserved unchanged under `reference/ict-viper/`. The local comparison found no additional saved content or features worth importing. It is excluded from Git and packaging and is never imported by the app.
 
 ```text
-telegram-scraper.app/           Generated Mac app; Applications contains a shortcut
+telegram-scraper.app/           Build output; the verified daily copy is in ~/Applications
 reference/ict-viper/           Preserved comparison source
 .telegram-scraper.json          Private settings
 .telegram-scraper-ui.json       Private running-app connection; removed on shutdown
@@ -119,6 +121,8 @@ Source observations commit independently before derived post processing. Followi
 **Back up before sync** is on by default. Each snapshot includes the existing post index, source database, media and variant receipts, including raw-only evidence from a prior interrupted run. Large libraries need enough free space for another full copy. Snapshots may take time. They are completed before history/content capture starts; the new attempt's initial receipt is already committed and quiescent during copying. Failed or interrupted snapshots are not presented as usable backups. The app does not automatically delete old backups. You can switch off future snapshots in Settings, but keep another backup of important archives.
 
 To recover a damaged library: stop the app, preserve the current folder, and extract a known-good backup into a **separate** folder. Check its `messages_all.json`, `evidence.sqlite3` and media before replacing anything. If a SQLite journal is present after a crash, keep it with its database. Do not delete old backups solely because a consistency check passed.
+
+If media exists but the post index is missing, capture remains blocked to protect possible historical posts. Restore the index from a verified backup, or arrange a separate recovery only after establishing that the folder never contained saved posts. The app does not reset ambiguous folders to an empty archive.
 
 For a fresh machine, copy the library folder and install the app. Legacy relative media paths are supported; paths pointing outside the chosen library are rejected. Keep a separate copy of original exports if exact original JSON formatting matters; subsequent saves retain fields but normalize order and formatting.
 

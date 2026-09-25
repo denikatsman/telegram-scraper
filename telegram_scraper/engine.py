@@ -151,11 +151,15 @@ class TelegramService:
         self.store = store
         self.report = report
         self._client = None
+        self._client_identity = None
+        self._client_unavailable = False
+        self._cleanup_task = None
         self._phone = ""
         self._phone_code_hash = None
         self._password_needed = False
         self._cancel = asyncio.Event()
         self._running = False
+        self._preflighting = False
         self._auth_lock = asyncio.Lock()
         self._counts: dict[str, int] = {}
         self._dirty = False
@@ -172,6 +176,102 @@ class TelegramService:
         self._watch_failure = None
         self._last_saved_at = None
         self._full_channel = None
+        self._ordinal = 0
+        self._current_order = {}
+        self._watch_pending = {}
+        self._inflight = {}
+        self._reconcile = {}
+        self._reconciled = {}
+        self._reconcile_boundary = {}
+        self._reconciling = False
+        self._disconnected_waiter = None
+
+    def _order(self, source, update=None):
+        self._ordinal += 1
+        order = {"ordinal": self._ordinal, "source": source}
+        # PTS from a history page is not a per-message counter version. Only
+        # comparable live message updates may use protocol sequence arbitration.
+        kind = type(update).__name__
+        if kind in {"UpdateNewChannelMessage", "UpdateEditChannelMessage"}:
+            order["scope"] = f"channel:{self._source_channel_id}"
+        elif kind in {"UpdateNewMessage", "UpdateEditMessage"}:
+            order["scope"] = "account"
+        if "scope" in order and type(getattr(update, "pts", None)) is int:
+            order["pts"] = update.pts
+        return order
+
+    async def _history_request(self, call):
+        order = None
+        def attempt():
+            nonlocal order
+            order = self._order("history")
+            return call()
+        result = await self._request(attempt)
+        order["response_received_at"] = datetime.now(timezone.utc).isoformat()
+        return result, order
+
+    @staticmethod
+    def _newer(raw, order, prior_raw, prior_order):
+        edit, prior_edit = raw.get("edit_date") or "", prior_raw.get("edit_date") or ""
+        if edit != prior_edit:
+            return edit > prior_edit, False
+        comparable = (order.get("source") == prior_order.get("source") == "watch"
+                      and order.get("scope") and order.get("scope") == prior_order.get("scope")
+                      and "pts" in order and "pts" in prior_order and order["pts"] != prior_order["pts"])
+        if comparable:
+            return order["pts"] > prior_order["pts"], False
+        counters = ("views", "forwards", "replies", "reactions")
+        ambiguous = any(raw.get(key) != prior_raw.get(key) for key in counters)
+        return order["ordinal"] >= prior_order["ordinal"], ambiguous
+
+    async def _arbitrate(self, message_id, captured, order):
+        # Receipt completion cannot determine receive order. Wait for sources
+        # already being committed before making a conflicting candidate current.
+        while self._inflight.get(message_id):
+            await asyncio.shield(asyncio.gather(*tuple(self._inflight[message_id])))
+        self._check_cancel()
+        candidates = []
+        if message_id in self._current_order:
+            candidates.append((self.store.records[message_id]["raw"], self._current_order[message_id]))
+        pending = self._watch_pending.get(message_id)
+        if pending:
+            candidates.append((pending[1][0], pending[2]))
+        promote = True
+        for raw, prior_order in candidates:
+            newer, ambiguous = self._newer(captured[0], order, raw, prior_order)
+            promote &= newer
+            generation = tuple(sorted((order["ordinal"], prior_order["ordinal"])))
+            if ambiguous and self._reconciling:
+                await self._issue("watch_ordering", None, message_id=message_id,
+                                  message="A counter reread overlapped or could not establish authoritative ordering. Raw candidates are retained; the locally protected candidate remains until later observations.")
+            elif ambiguous and max(generation) > self._reconcile_boundary.get(message_id, 0) and self._reconciled.get(message_id) != generation:
+                self._reconcile[message_id] = generation
+        if not promote:
+            await self._event({"type": "message_superseded", "message_id": message_id,
+                               "observation_id": captured[1], "acquisition": order})
+        return promote
+
+    async def _reconcile_message(self, client, entity, message_id, generation):
+        self._reconciled[message_id] = generation
+        self._reconciling = True
+        try:
+            if not hasattr(client, "get_messages"):
+                await self._issue("watch_ordering", None, message_id=message_id, message="Counter ordering is ambiguous; this client has no targeted reread. Raw candidates were retained.")
+                return
+            message, order = await self._history_request(lambda: client.get_messages(entity, ids=message_id))
+            if message is None:
+                await self._issue("watch_ordering", None, message_id=message_id, message="The counter reread returned no message. Raw candidates were retained.")
+                return
+            await self._process(client, message, source="reconciliation", order=order)
+        except (_Cancelled, asyncio.CancelledError, StoreError, AuthRequired, RawCaptureError):
+            raise
+        except Exception as exc:
+            self._check_cancel()
+            await self._issue("watch_ordering", exc, message_id=message_id,
+                              detail="The bounded counter reread could not settle ordering. Raw candidates were retained for later observations.")
+        finally:
+            self._reconcile_boundary[message_id] = self._ordinal
+            self._reconciling = False
 
     @staticmethod
     def _transient(exc: BaseException) -> bool:
@@ -194,7 +294,7 @@ class TelegramService:
 
     async def _await(self, awaitable: Any) -> Any:
         """Interrupt network operations promptly, without detaching disk writes."""
-        if not self._running:
+        if not self._running and not self._preflighting:
             return await awaitable
         operation = asyncio.ensure_future(awaitable)
         cancelled = asyncio.create_task(self._cancel.wait())
@@ -249,13 +349,17 @@ class TelegramService:
     async def _disk(self, call: Callable, *args: Any, **kwargs: Any) -> Any:
         """Do not release the caller's writer lock while a worker still writes."""
         worker = asyncio.create_task(asyncio.to_thread(call, *args, **kwargs))
-        try:
-            return await asyncio.shield(worker)
-        except asyncio.CancelledError:
-            self._cancel.set()
-            with contextlib.suppress(Exception):
-                await worker
-            raise
+        cancelled = False
+        while not worker.done():
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                self._cancel.set()
+                cancelled = True
+        result = worker.result()
+        if cancelled:
+            raise asyncio.CancelledError()
+        return result
 
     async def _event(self, value: dict) -> None:
         if self.evidence is not None and self._run_id is not None:
@@ -335,7 +439,10 @@ class TelegramService:
             return
         try:
             from telethon.tl.functions.channels import GetFullChannelRequest
-            full = await self._request(lambda: client(GetFullChannelRequest(entity)))
+            from telethon.tl.functions.messages import GetFullChatRequest
+            from .identity import peer_identity
+            request = GetFullChatRequest(entity.id) if peer_identity(entity)["kind"] == "chat" else GetFullChannelRequest(entity)
+            full = await self._request(lambda: client(request))
             await self._capture_object("channel_full", entity.id, full, context={"stage": "full"}, required=True)
             self._full_channel = full
             for related in [*getattr(full, "users", []), *getattr(full, "chats", [])]:
@@ -382,6 +489,9 @@ class TelegramService:
                     await self._issue("entity_resolution", exc, message_id=message.id, role=prefix + role, reference=reference)
 
     async def _connected_client(self):
+        identity = (str(self.settings.get("api_id") or ""), str(self.settings.get("api_hash") or "").strip())
+        if self._client_unavailable or self._client_identity is not None and self._client_identity != identity:
+            await self.close(cancel=False)
         if self._client is None:
             try:
                 api_id = int(self.settings.get("api_id") or 0)
@@ -395,11 +505,25 @@ class TelegramService:
             except ImportError:
                 raise UserError("Telegram support is not installed. Run the app's setup command and try again.") from None
             from .config import session_path
+            # An expired session can still contain old update cursors. Eager
+            # catch-up treats those as proof of a previous login, disconnects
+            # on AUTH_KEY_UNREGISTERED, and cancels an in-flight code request.
+            # Watch explicitly scans history and catches up after authorization.
             self._client = TelegramClient(str(session_path(self.account_root)), api_id, api_hash,
                                           flood_sleep_threshold=0, request_retries=3,
-                                          connection_retries=3, timeout=15, catch_up=True, sequential_updates=True)
+                                          connection_retries=3, timeout=15, catch_up=False, sequential_updates=True)
+            self._client_identity = identity
         if not self._client.is_connected():
-            await self._request(self._client.connect)
+            try:
+                await self._request(self._client.connect, retry_transient=False)
+            except BaseException:
+                # connect may already own a transport even before is_connected
+                # becomes true. Drain cleanup before a retry can replace it.
+                try:
+                    await self.close()
+                except BaseException:
+                    pass  # preserve the initiating connection/cancellation error
+                raise
             from .config import session_path
             session = session_path(self.account_root)
             if session.exists():
@@ -457,9 +581,9 @@ class TelegramService:
                 return {"step": "password"}
             raise _user_error(exc) from None
 
-    async def _entity(self, client: Any):
+    async def _entity(self, client: Any, locator=None, resolution=None):
         from .config import normalize_channel
-        channel = normalize_channel(str(self.settings.get("channel") or ""))
+        channel = normalize_channel(str(self.settings.get("channel") if locator is None else locator or ""))
         if not channel:
             raise UserError("Choose the Telegram channel to archive in Settings.")
         parsed = urlparse(channel if "://" in channel else "https://" + channel)
@@ -473,7 +597,8 @@ class TelegramService:
         if invite:
             from telethon.tl.functions.messages import CheckChatInviteRequest
             invitation = await self._request(lambda: client(CheckChatInviteRequest(invite)))
-            await self._capture_object("channel_resolution", channel, invitation, context={"method": "CheckChatInviteRequest"})
+            if resolution is not None:
+                resolution.append((channel, invitation))
             if type(invitation).__name__ != "ChatInviteAlready" or not getattr(invitation, "chat", None):
                 raise UserError("This account has not joined that private channel. Join it in Telegram first, then try again.")
             return invitation.chat
@@ -502,6 +627,104 @@ class TelegramService:
             raise UserError("That link belongs to a person or bot. Choose a Telegram channel or group.")
         return entity
 
+    def capture_stamp(self):
+        from .channels import Channels
+        catalogue = Channels(self.account_root)
+        def digest(path):
+            return hashlib.sha256(path.read_bytes()).hexdigest() if path.exists() else None
+        return (str(self.root), self.store._read_records()[1], digest(self.store.data_dir / "channel.json"), digest(self.account_root / ".telegram-scraper.json"),
+                catalogue.digest, tuple(sorted(self.settings.items())))
+
+    async def resolve_target(self, locator=None, *, bound=True):
+        from .identity import peer_identity
+        from telethon.tl.types import PeerChannel, PeerChat
+        client = await self._connected_client()
+        if not await self._request(client.is_user_authorized):
+            raise AuthRequired("Connect your Telegram account before starting an archive.")
+        identity = self.store.channel_identity() if bound else None
+        resolution = []
+        try:
+            entity = await self._entity(client, locator=locator, resolution=resolution)
+        except (AuthRequired, StoreError):
+            raise
+        except Exception:
+            if locator is not None or not identity or not identity["kind"]:
+                raise
+            peer = PeerChannel(identity["id"]) if identity["kind"] == "channel" else PeerChat(identity["id"])
+            try:
+                entity = await self._request(lambda: client.get_entity(peer))
+            except ValueError:
+                entity = None
+                iterator = client.iter_dialogs().__aiter__()
+                while True:
+                    try:
+                        dialog = await self._request(iterator.__anext__, retry_transient=False)
+                    except StopAsyncIteration:
+                        break
+                    try:
+                        matches = peer_identity(dialog.entity) == identity
+                    except StoreError:
+                        matches = False
+                    if matches:
+                        entity = dialog.entity
+                        break
+                if entity is None:
+                    raise UserError("This account cannot access the archive's saved channel identity.")
+        actual = peer_identity(entity)
+        if identity and (identity["id"] != actual["id"] or identity["kind"] and identity["kind"] != actual["kind"]):
+            raise UserError("That link resolves to a different channel or group. The archive identity was kept.")
+        return {"client": client, "entity": entity, "identity": actual, "resolution": resolution}
+
+    def matching_archives(self, identity):
+        from .channels import Channels
+        from .storage import Store
+        catalogue = Channels(self.account_root)
+        matches = []
+        for entry in catalogue.entries(""):
+            folder = catalogue.folder(entry["id"])
+            if folder != self.root and Store(folder).channel_identity() == identity:
+                matches.append(entry["id"])
+        return matches
+
+    async def preflight(self):
+        if self._running or self._preflighting:
+            raise UserError("A capture or channel preflight is already running.")
+        self._preflighting = True
+        self._cancel.clear()
+        self._watch_failure = None
+        try:
+            return await self._preflight()
+        except _Cancelled:
+            raise UserError("Capture preflight was stopped. No capture started.") from None
+        finally:
+            self._preflighting = False
+
+    async def _preflight(self):
+        from .evidence import EvidenceStore
+        records, _ = self.store._read_records()
+        await self._disk(EvidenceStore(self.root).validate, cancel=self._cancel.is_set)
+        stamp = self.capture_stamp()
+        target = await self.resolve_target()
+        target["matching_archives"] = self.matching_archives(target["identity"])
+        binding = self.store.channel_identity()
+        if not target["matching_archives"] and (records and not binding or binding and not binding["kind"]):
+            raise UserError("Confirm this archive's original channel in Settings using Resolve channel, then try capture again.")
+        if stamp != self.capture_stamp():
+            raise UserError("Archive or settings changed during channel resolution. Retry the operation.")
+        target["stamp"] = stamp
+        return target
+
+    @staticmethod
+    def _primary_file_info(message: Any) -> Any:
+        document = getattr(message, "document", None)
+        if document is not None and getattr(message, "photo", None) is not None:
+            # Web previews can contain both. Telethon downloads the document,
+            # but Message.file describes the photo first. Use the downloaded
+            # object's size, MIME type, filename and extension consistently.
+            from telethon.tl.custom.file import File
+            return File(document)
+        return getattr(message, "file", None)
+
     def _record(self, message: Any, raw: dict | None = None, observation_id: int | None = None) -> dict:
         raw = _json_value(message.to_dict()) if raw is None else raw
         old = self.store.records.get(message.id, {})
@@ -525,21 +748,29 @@ class TelegramService:
         record["has_media"] = downloadable
         if downloadable:
             obj = document if document is not None else photo
-            file = getattr(message, "file", None)
+            file = self._primary_file_info(message)
             mime = getattr(file, "mime_type", None) or getattr(document, "mime_type", None) or ("image/jpeg" if photo else None)
-            kind = "photo" if photo else ("video" if mime and mime.startswith("video/") else "audio" if mime and mime.startswith("audio/") else "document")
+            kind = "photo" if document is None else ("video" if mime and mime.startswith("video/") else "audio" if mime and mime.startswith("audio/") else "document")
             media_id = getattr(obj, "id", None)
+            from .media import primary_media
+            representation, expected, selected_size = primary_media(message)
             # Replacement attachments must never silently overwrite an older file.
-            if old.get("media_id") is not None and old.get("media_id") != media_id:
+            if (old.get("media_id") is not None and old.get("media_id") != media_id
+                    or old.get("media_receipt") and old["media_receipt"].get("descriptor") != representation):
                 previous = list(old.get("previous_media", []))
                 previous.append({key: value for key, value in old.items() if key.startswith("media_")})
                 record["previous_media"] = previous
                 record["media_file"] = None
                 record["media_error"] = None
                 record["media_sha256"] = None
+                record["media_receipt"] = None
             record.update(media_id=media_id, media_access_hash=getattr(obj, "access_hash", None),
                           media_kind=kind, media_mime=mime, media_size=getattr(file, "size", None) or getattr(document, "size", None) or (old.get("media_size") if old.get("media_id") == media_id else None),
                           media_name=getattr(file, "name", None))
+            if expected is not None:
+                record["media_size"] = expected
+            if type(selected_size).__name__ == "VideoSize":
+                record.update(media_kind="video", media_mime="video/mp4")
             current = self.store.media_path(record)
             valid = self._valid_media(current, record)
             record["media_status"] = "downloaded" if valid else "pending"
@@ -552,7 +783,7 @@ class TelegramService:
                 record["previous_media"] = previous
                 # The original file remains on disk and in revision history;
                 # the current post must reflect Telegram's removed attachment.
-                for key in ("media_file", "media_id", "media_access_hash", "media_sha256", "media_kind", "media_mime", "media_size", "media_name", "media_error"):
+                for key in ("media_file", "media_id", "media_access_hash", "media_sha256", "media_kind", "media_mime", "media_size", "media_name", "media_error", "media_receipt"):
                     record[key] = None
             # Polls, locations and other non-file media remain available in raw.
             record["media_status"] = "unavailable" if getattr(message, "media", None) else None
@@ -576,10 +807,31 @@ class TelegramService:
 
     async def _download(self, client: Any, message: Any, record: dict) -> None:
         self._check_cancel()
+        from .media import primary_media, safe_primary_path
+        from .identity import peer_identity
+        from .storage import _fsync_directory
+        representation, _, selected_size = primary_media(message)
+        peer = peer_identity(self._channel_entity)
+        if hasattr(self.evidence, "primary_receipts"):
+            receipts = await self._disk(self.evidence.primary_receipts, peer["id"], message.id, representation, peer["kind"])
+            for kind, receipt in receipts:
+                path = safe_primary_path(self.root, receipt.get("path"))
+                if path and path.is_file() and path.stat().st_size == receipt.get("size"):
+                    if await self._disk(self._checksum, path) == receipt.get("sha256"):
+                        if kind == "primary_media_intent":
+                            await self._disk(_fsync_directory, path.parent)
+                            await self._observe("primary_media_file", message.id, receipt, context={"message_id": message.id, "recovered_intent": True})
+                        self._apply_primary(record, receipt)
+                        self._counts["media_downloaded"] += 1
+                        return
         media_dir = Path(self.store.media_dir)
+        if media_dir.is_symlink() or media_dir.parent.is_symlink():
+            raise StoreError("Primary media folders cannot be symbolic links.")
         media_dir.mkdir(parents=True, exist_ok=True)
-        file_info = getattr(message, "file", None)
+        file_info = self._primary_file_info(message)
         suffix = getattr(file_info, "ext", None) or mimetypes.guess_extension(record.get("media_mime") or "") or ".bin"
+        if type(selected_size).__name__ == "VideoSize":
+            suffix = ".mp4"
         if not re.fullmatch(r"\.[A-Za-z0-9]{1,10}", suffix):
             suffix = ".bin"
         stamp = _utc(message.date).strftime("%Y-%m-%dT%H-%M-%S") if message.date else "undated"
@@ -611,22 +863,36 @@ class TelegramService:
             destination = media_dir / f"{base}{suffix}"
             version = 1
             while True:
+                receipt = {"schema_version": 1, "descriptor": representation, "peer": peer, "message_id": message.id,
+                           "path": destination.relative_to(self.root).as_posix(), "size": actual, "sha256": digest}
+                if destination.exists() or destination.is_symlink():
+                    if (safe_primary_path(self.root, receipt["path"]) and destination.is_file()
+                            and destination.stat().st_size == actual and await self._disk(self._checksum, destination) == digest):
+                        # Old pre-receipt files are reused only after comparing
+                        # them with this newly verified acquisition.
+                        break
+                    destination = media_dir / f"{base}-{record.get('media_id') or 'copy'}-{version}{suffix}"
+                    version += 1
+                    continue
+                await self._observe("primary_media_intent", message.id, receipt, context={"message_id": message.id})
                 try:
                     # Atomic, exclusive publication: os.replace would overwrite.
                     os.link(temporary, destination)
                     break
                 except FileExistsError:
-                    destination = media_dir / f"{base}-{record.get('media_id') or 'copy'}-{version}{suffix}"
-                    version += 1
-            record["media_file"] = str(destination.relative_to(self.root))
-            record["media_status"] = "downloaded"
-            record["media_error"] = None
-            record["media_sha256"] = digest
-            record["media_size"] = actual
+                    continue
+            await self._disk(_fsync_directory, media_dir)
+            await self._observe("primary_media_file", message.id, receipt, context={"message_id": message.id})
+            self._apply_primary(record, receipt)
             self._counts["media_downloaded"] += 1
         finally:
             temporary.unlink(missing_ok=True)
             self._emit(current_bytes=0, total_bytes=0)
+
+    @staticmethod
+    def _apply_primary(record, receipt):
+        record.update(media_file=receipt["path"], media_status="downloaded", media_error=None,
+                      media_sha256=receipt["sha256"], media_size=receipt["size"], media_receipt=receipt)
 
     def _checksum(self, path: Path) -> str:
         digest = hashlib.sha256()
@@ -644,12 +910,16 @@ class TelegramService:
         return await client.download_media(message, file=stream, progress_callback=progress)
 
     async def _process(self, client: Any, message: Any, *, source: str = "history", scan_id: str | None = None,
-                       captured: tuple | None = None) -> None:
+                       captured: tuple | None = None, order: dict | None = None) -> None:
+        order = order or self._order(source)
         if captured is None:
             captured = await self._capture_object("message", getattr(message, "id", "unknown"), message,
-                                                  context={"source": source, "scan_id": scan_id}, required=True)
+                                                  context={"source": source, "scan_id": scan_id, "acquisition": order}, required=True)
         try:
+            if not await self._arbitrate(message.id, captured, order):
+                return
             await self._process_inner(client, message, source=source, scan_id=scan_id, captured=captured)
+            self._current_order[message.id] = order
         except BaseException as exc:
             await self._event({"type": "message_processing_interrupted" if isinstance(exc, (_Cancelled, asyncio.CancelledError)) else "message_processing_failed",
                                "message_id": getattr(message, "id", None), "source": source, "scan_id": scan_id,
@@ -718,7 +988,8 @@ class TelegramService:
             await self._save()
         if self._collector is not None:
             self._emit(phase="context", message=f"Capturing related information for post {message.id}…")
-            summary = await self._collector.capture_message(self._channel_entity, message)
+            primary = record.get("media_receipt") if not needs_download or record.get("media_status") == "downloaded" else None
+            summary = await self._collector.capture_message(self._channel_entity, message, primary_receipt=primary)
             if summary.get("status") == "partial":
                 await self._issue("related_context", None, message_id=message.id, summary=summary)
             record = dict(self.store.records[message.id])
@@ -745,6 +1016,7 @@ class TelegramService:
         while True:
             self._check_cancel()
             try:
+                order = self._order("history")
                 message = await self._request(lambda: iterator.__anext__(), retry_transient=False)
             except StopAsyncIteration:
                 break
@@ -756,7 +1028,7 @@ class TelegramService:
                     break
                 if timestamp >= bounds[1]:
                     continue
-            await self._process(client, message)
+            await self._process(client, message, order=order)
 
     async def _history_pages(self, client: Any, entity: Any, bounds: tuple | None = None) -> None:
         from telethon.tl.functions.messages import GetHistoryRequest
@@ -777,7 +1049,7 @@ class TelegramService:
             input_chat = utils.get_input_peer(entity)
         except (TypeError, ValueError):
             input_chat = None
-        anchor = await self._request(lambda: client(request(limit=1)))
+        anchor, anchor_order = await self._history_request(lambda: client(request(limit=1)))
         await self._capture_object("history_anchor", scan["scan_id"], anchor, context={"scan_id": scan["scan_id"]}, required=True)
         anchor_messages = self._history_vector(anchor)
         scan["anchor_top_id"] = max((getattr(message, "id", 0) for message in anchor_messages), default=0)
@@ -794,11 +1066,11 @@ class TelegramService:
             if scan["anchor_top_id"] == 0:
                 scan["history_traversal_complete"] = True
                 break
-            response = await self._request(lambda: client(request(cursor, upper=scan["anchor_top_id"] + 1,
+            response, order = await self._history_request(lambda: client(request(cursor, upper=scan["anchor_top_id"] + 1,
                                                                   offset_date=bounds[1] if bounds and cursor == 0 else None)))
             scan["pages"] += 1
             await self._capture_object("history_page", f"{scan['scan_id']}:{cursor}", response,
-                                       context={"scan_id": scan["scan_id"], "offset_id": cursor, "upper_exclusive": scan["anchor_top_id"] + 1, "page": scan["pages"]}, required=True)
+                                       context={"scan_id": scan["scan_id"], "offset_id": cursor, "upper_exclusive": scan["anchor_top_id"] + 1, "page": scan["pages"], "acquisition": order}, required=True)
             entities = {}
             for obj in [*getattr(response, "users", []), *getattr(response, "chats", [])]:
                 await self._capture_object("entity", f"{type(obj).__name__}:{getattr(obj, 'id', 'unknown')}", obj,
@@ -814,7 +1086,7 @@ class TelegramService:
             next_cursor = cursor
             for message in messages:
                 captured = await self._capture_object("message", getattr(message, "id", "unknown"), message,
-                                                      context={"source": "history", "scan_id": scan["scan_id"], "page": scan["pages"]}, required=True)
+                                                      context={"source": "history", "scan_id": scan["scan_id"], "page": scan["pages"], "acquisition": order}, required=True)
                 message_id = getattr(message, "id", None)
                 if not isinstance(message_id, int) or message_id <= 0:
                     raise UserError("A Telegram history page contained an invalid message ID. The raw page is saved; coverage is incomplete.")
@@ -841,7 +1113,7 @@ class TelegramService:
                 if hasattr(message, "_finish_init"):
                     # Source JSON/TL bytes above precede Telethon's local enrichments.
                     message._finish_init(client, entities, input_chat)
-                await self._process(client, message, source="history", scan_id=scan["scan_id"], captured=captured)
+                await self._process(client, message, source="history", scan_id=scan["scan_id"], captured=captured, order=order)
                 scan["accessible_message_count"] += 1
                 if captured[0].get("_") == "MessageEmpty":
                     scan["empty_object_count"] += 1
@@ -876,6 +1148,7 @@ class TelegramService:
     async def _watch(self, client: Any, entity: Any) -> None:
         from telethon import events
         pending: OrderedDict[int, Any] = OrderedDict()
+        self._watch_pending = pending
         wake = asyncio.Event()
         overflow = False
         stopping = False
@@ -885,14 +1158,16 @@ class TelegramService:
             nonlocal overflow
             if stopping:
                 return
+            order = self._order("watch", getattr(event, "original_update", None))
             finished = asyncio.get_running_loop().create_future()
             receipts.add(finished)
             message = event.message
+            self._inflight.setdefault(message.id, set()).add(finished)
             try:
                 update = getattr(event, "original_update", None)
                 if update is not None:
-                    await self._capture_object("telegram_update", message.id, update, context={"source": "watch"}, required=True)
-                captured = await self._capture_object("message", message.id, message, context={"source": "watch"}, required=True)
+                    await self._capture_object("telegram_update", message.id, update, context={"source": "watch", "acquisition": order}, required=True)
+                captured = await self._capture_object("message", message.id, message, context={"source": "watch", "acquisition": order}, required=True)
             except BaseException as exc:
                 self._watch_failure = exc
                 self._cancel.set()
@@ -901,10 +1176,18 @@ class TelegramService:
             finally:
                 finished.set_result(None)
                 receipts.discard(finished)
+                self._inflight[message.id].discard(finished)
+                if not self._inflight[message.id]:
+                    del self._inflight[message.id]
             if message.id in pending:
-                pending[message.id] = (message, captured)
+                previous = pending[message.id]
+                newer, ambiguous = self._newer(captured[0], order, previous[1][0], previous[2])
+                if ambiguous and not self._reconciling and max(order["ordinal"], previous[2]["ordinal"]) > self._reconcile_boundary.get(message.id, 0):
+                    self._reconcile[message.id] = tuple(sorted((order["ordinal"], previous[2]["ordinal"])))
+                if newer:
+                    pending[message.id] = (message, captured, order)
             elif len(pending) < 512:
-                pending[message.id] = (message, captured)
+                pending[message.id] = (message, captured, order)
             else:
                 # Coalesce bursts and recover from history instead of allowing
                 # a download queue to grow without bound.
@@ -914,6 +1197,15 @@ class TelegramService:
         handlers = [events.NewMessage(chats=entity), events.MessageEdited(chats=entity)]
         for handler in handlers:
             client.add_event_handler(receive, handler)
+        # Acquire Telethon's shield outside a Task. Python 3.14's shield keeps
+        # its awaited-by debugging callback until the underlying future ends;
+        # a callback context avoids retaining a stopped Watch task on restart.
+        acquired = asyncio.get_running_loop().create_future()
+        def acquire_waiter():
+            if not acquired.done():
+                acquired.set_result(getattr(client, "disconnected", None))
+        asyncio.get_running_loop().call_soon(acquire_waiter)
+        self._disconnected_waiter = await acquired
         try:
             # Register first, so posts arriving during the catch-up are retained.
             if hasattr(client, "catch_up"):
@@ -922,17 +1214,20 @@ class TelegramService:
             await self._history(client, entity)
             while True:
                 self._check_cancel()
+                wake.clear()
                 if overflow:
                     overflow = False
                     self._emit(phase="syncing", message="Catching up after a burst of channel activity…")
                     await self._history(client, entity)
                 while pending:
-                    _, (message, captured) = pending.popitem(last=False)
-                    await self._process(client, message, source="watch", captured=captured)
+                    _, (message, captured, order) = pending.popitem(last=False)
+                    await self._process(client, message, source="watch", captured=captured, order=order)
+                if self._reconcile:
+                    message_id, generation = self._reconcile.popitem()
+                    await self._reconcile_message(client, entity, message_id, generation)
                 await self._save()
-                if overflow:
+                if overflow or pending or self._reconcile:
                     continue
-                wake.clear()
                 self._emit(status="running", phase="watching", message="Up to date. Watching for new posts and edits…")
                 await self._wait_for_update(client, wake)
         finally:
@@ -943,13 +1238,22 @@ class TelegramService:
             # arrives. Drain its receipt, not Telethon's long-lived updater task,
             # before closing this run and permitting another one to start.
             if receipts:
-                await asyncio.gather(*tuple(receipts), return_exceptions=True)
+                drain = asyncio.gather(*tuple(receipts), return_exceptions=True)
+                while not drain.done():
+                    try:
+                        await asyncio.shield(drain)
+                    except asyncio.CancelledError:
+                        continue
+            if self._disconnected_waiter is not None and isinstance(getattr(type(client), "disconnected", None), property):
+                self._disconnected_waiter.cancel()
+            self._disconnected_waiter = None
+            if self._watch_failure is not None:
+                raise self._watch_failure
 
     async def _wait_for_update(self, client: Any, wake: asyncio.Event) -> None:
         update = asyncio.create_task(wake.wait())
         timer = asyncio.create_task(asyncio.sleep(max(0, self._next_catch_up - time.monotonic())))
-        disconnected = getattr(client, "disconnected", None)
-        shield = asyncio.ensure_future(asyncio.shield(disconnected)) if disconnected is not None else None
+        shield = self._disconnected_waiter
         try:
             pending = (update, timer, shield) if shield is not None else (update, timer)
             done, _ = await self._await(asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED))
@@ -963,18 +1267,24 @@ class TelegramService:
                     await self._request(client.catch_up)
                 self._next_catch_up = time.monotonic() + self.CATCH_UP_INTERVAL
         finally:
-            for task in (update, timer, shield):
+            for task in (update, timer):
                 if task is not None:
                     task.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
                         await task
 
-    async def run(self, mode: str, start: str = "", end: str = "") -> dict:
+    async def run(self, mode: str, start: str = "", end: str = "", *, target=None) -> dict:
         if self._running:
             raise UserError("An archive operation is already running. Stop it before starting another.")
         if mode not in {"sync", "range", "watch"}:
             raise UserError("Choose Sync, Date range, or Watch.")
         bounds = date_bounds(start, end) if mode == "range" else None
+        if target is None:
+            target = await self.preflight()
+        if target.get("matching_archives"):
+            return {"capture_started": False, "existing_archive_ids": target["matching_archives"]}
+        if target.get("stamp") != self.capture_stamp():
+            raise UserError("Archive or settings changed after preflight. Retry capture.")
         self._running = True
         self._cancel.clear()
         self._counts = {"processed": 0, "added": 0, "updated": 0, "media_downloaded": 0, "media_failed": 0}
@@ -985,6 +1295,13 @@ class TelegramService:
         self._entity_fetch_attempted = set()
         self._source_channel_id = None
         self._watch_failure = None
+        self._ordinal = 0
+        self._current_order = {}
+        self._watch_pending = {}
+        self._inflight = {}
+        self._reconcile = {}
+        self._reconciled = {}
+        self._reconcile_boundary = {}
         self._collector = None
         self._run_id = None
         self._last_saved_at = None
@@ -999,6 +1316,10 @@ class TelegramService:
             if self.evidence is None:
                 self.evidence = EvidenceStore(self.root)
             await self._disk(self.evidence.prepare)
+            # Initialization is a durability boundary even when no post is dirty.
+            # The existing missing-index/media guard was checked by load above.
+            if self.store._disk_digest is None:
+                await self._disk(self.store.save)
             from . import __version__
             import telethon
             from telethon.tl.alltlobjects import LAYER
@@ -1010,14 +1331,13 @@ class TelegramService:
                                                                     "tl_bytes_representation": "Telethon serialization of the returned TL object, not the original encrypted network packet",
                                                                     "scope_limitations": self._scope_limitations()})
             self._emit(run_id=self._run_id)
-            client = await self._connected_client()
-            if not await self._request(client.is_user_authorized):
-                raise AuthRequired("Connect your Telegram account before starting an archive.")
-            entity = await self._entity(client)
+            client, entity = target["client"], target["entity"]
             self._source_channel_id = entity.id
             self._channel_entity = entity
-            await self._disk(self.store.bind_channel, entity.id, getattr(entity, "title", None) or getattr(entity, "username", None) or str(entity.id), str(self.settings.get("channel") or ""), str(self.settings.get("legacy_channel") or ""))
+            await self._disk(self.store.bind_channel, entity.id, getattr(entity, "title", None) or getattr(entity, "username", None) or str(entity.id), str(self.settings.get("channel") or ""), str(self.settings.get("legacy_channel") or ""), peer_kind=target["identity"]["kind"])
             await self._disk(self.evidence.update_run, self._run_id, channel_id=entity.id)
+            for locator, invitation in target["resolution"]:
+                await self._capture_object("channel_resolution", locator, invitation, context={"method": "CheckChatInviteRequest"}, required=True)
             self._check_cancel()
             if self.settings.get("archive_before_sync", True) and self.store.has_snapshot_data():
                 self._emit(phase="snapshot", message="Saving a recovery snapshot before syncing…")
@@ -1029,7 +1349,7 @@ class TelegramService:
                 async def record_context(kind, subject_id, obj, context=None):
                     _, observation = await self._capture_object(kind, subject_id, obj, context=context, required=True)
                     return observation
-                self._collector = ContextCollector(client, self._request, record_context, self._cancel.is_set,
+                self._collector = ContextCollector(client, self._request, record_context, self._check_cancel,
                                                    bool(self.settings.get("download_media", True)), self.root)
                 channel_photo = getattr(getattr(self._full_channel, "full_chat", None), "chat_photo", None)
                 if channel_photo is not None:
@@ -1081,8 +1401,27 @@ class TelegramService:
     def cancel(self) -> None:
         self._cancel.set()
 
-    async def close(self) -> None:
-        self.cancel()
+    async def close(self, *, cancel=True) -> None:
+        if cancel:
+            self.cancel()
         if self._client is not None:
-            await self._client.disconnect()
-            self._client = None
+            self._client_unavailable = True
+            if self._cleanup_task is None or self._cleanup_task.done():
+                async def disconnect():
+                    await self._client.disconnect()
+                    self._client = None
+                    self._client_identity = None
+                    self._client_unavailable = False
+                    self._phone = ""
+                    self._phone_code_hash = None
+                    self._password_needed = False
+                self._cleanup_task = asyncio.create_task(disconnect())
+            cancelled = False
+            while not self._cleanup_task.done():
+                try:
+                    await asyncio.shield(self._cleanup_task)
+                except asyncio.CancelledError:
+                    cancelled = True
+            self._cleanup_task.result()
+            if cancelled:
+                raise asyncio.CancelledError()

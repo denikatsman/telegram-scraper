@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from concurrent.futures import TimeoutError as FutureTimeout
+from concurrent.futures import CancelledError as FutureCancelled, TimeoutError as FutureTimeout
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from http import HTTPStatus
@@ -15,6 +15,7 @@ from pathlib import Path
 import re
 import secrets
 import threading
+from functools import wraps
 from urllib.parse import parse_qs, urlparse
 
 from .config import Settings
@@ -47,6 +48,21 @@ def media_kind(record):
     return "file" if filename or record.get("has_media") else "text"
 
 
+def mutation(method):
+    @wraps(method)
+    async def admitted(self, *args, **kwargs):
+        self.check_open()
+        task = asyncio.current_task()
+        self._mutations[task] = self._mutations.get(task, 0) + 1
+        try:
+            return await method(self, *args, **kwargs)
+        finally:
+            self._mutations[task] -= 1
+            if not self._mutations[task]:
+                del self._mutations[task]
+    return admitted
+
+
 class Runtime:
     """One event loop owns the Telethon session and all mutations."""
 
@@ -60,6 +76,11 @@ class Runtime:
         self._active_lock = None
         self.context_revision = 0
         self.library_busy = False
+        self.closing = False
+        self._close_task = None
+        self._mutations = {}
+        self.preflight_task = None
+        self._identity_tokens = {}
         self.library_error = None
         self.evidence_error = None
         try:
@@ -91,6 +112,8 @@ class Runtime:
         except FutureTimeout as exc:
             future.cancel()
             raise ValueError("Telegram is taking too long to respond. Check your connection and try again.") from exc
+        except FutureCancelled as exc:
+            raise ValueError("The operation was interrupted before it finished. Try again.") from exc
 
     def report(self, update):
         if threading.current_thread() is not self.thread:
@@ -134,14 +157,19 @@ class Runtime:
     async def channel_disk(self, function):
         # Cancellation must drain filesystem work before releasing its lock.
         worker = asyncio.create_task(asyncio.to_thread(function))
-        try:
-            return await asyncio.shield(worker)
-        except asyncio.CancelledError:
-            await worker
-            raise
+        cancelled = False
+        while not worker.done():
+            try:
+                await asyncio.shield(worker)
+            except asyncio.CancelledError:
+                cancelled = True
+        result = worker.result()
+        if cancelled:
+            raise asyncio.CancelledError()
+        return result
 
     def check_channel(self, expected):
-        if self.library_busy or expected != self.channels.active:
+        if self.library_busy and self.preflight_task is None or expected != self.channels.active:
             raise ValueError("The selected channel changed. Refresh the app before continuing.")
 
     async def scoped(self, expected, operation):
@@ -157,6 +185,7 @@ class Runtime:
         return result
 
     async def channel_action(self, expected, payload, *, add=False):
+        self.check_open()
         self.check_channel(expected)
         return await (self.add_channel(payload) if add else self.select_channel(payload))
 
@@ -168,11 +197,34 @@ class Runtime:
     async def export_store(self):
         return self.evidence
 
+    @mutation
     async def add_channel(self, payload):
+        self.check_open()
         if self.job["running"] or self.auth_busy or self.library_busy:
             raise ValueError("Finish or stop the current operation before adding a channel.")
         if set(payload) != {"channel"}:
             raise ValueError("Paste a channel or message link to add its archive.")
+        self.library_busy = True
+        self.preflight_task = asyncio.current_task()
+        try:
+            return await self._add_channel(payload)
+        finally:
+            self.library_busy = False
+            self.preflight_task = None
+
+    async def _add_channel(self, payload):
+        if self.connection.get("authorized"):
+            service = self.get_service()
+            target = await service.resolve_target(payload["channel"], bound=False)
+            matches = service.matching_archives(target["identity"])
+            if self.store.channel_identity() == target["identity"]:
+                matches.append(self.channels.active)
+            self.check_open()
+            if len(matches) > 1:
+                return {"added": False, "existing_archive_ids": matches}
+            if matches:
+                await self.select_channel({"id": matches[0]}, _reserved=True)
+                return {"active_channel": matches[0], "added": False}
         if self.channels.active == "main" and not self.store.records and not self.settings.values.get("channel"):
             from .config import normalize_channel
             channel = normalize_channel(payload["channel"])
@@ -183,11 +235,13 @@ class Runtime:
                 self.service.settings = self.channel_settings()
             return {"active_channel": "main", "added": True}
         key, added = self.channels.add(payload["channel"], self.settings.values.get("channel", ""))
-        await self.select_channel({"id": key})
+        await self.select_channel({"id": key}, _reserved=True)
         return {"active_channel": key, "added": added}
 
-    async def select_channel(self, payload):
-        if self.job["running"] or self.auth_busy or self.library_busy:
+    @mutation
+    async def select_channel(self, payload, *, _reserved=False):
+        self.check_open()
+        if not _reserved and (self.job["running"] or self.auth_busy or self.library_busy):
             raise ValueError("Finish or stop the current operation before switching channels.")
         if set(payload) != {"id"} or not isinstance(payload["id"], str):
             raise ValueError("Choose one of your saved channels.")
@@ -206,6 +260,7 @@ class Runtime:
             evidence = EvidenceStore(folder)
             await self.channel_disk(evidence.prepare)
             await self.channel_disk(evidence.validate)
+            self.check_open()
             # Persist selection only after the archive can be opened. A failed
             # switch keeps the previous archive, login and selection intact.
             self.channels.select(key)
@@ -229,6 +284,7 @@ class Runtime:
 
     async def state(self):
         revision = self.context_revision
+        library_revision = self.store.revision
         records = list(self.store.records.values())
         dates = sorted(r.get("date") for r in records if isinstance(r.get("date"), str) and r["date"])
         try:
@@ -254,10 +310,12 @@ class Runtime:
         return {
             "settings": settings,
             "channels": entries, "active_channel": self.channels.active, "channel_busy": self.library_busy,
+            "capture_preflight": self.preflight_task is not None,
             "connection": dict(self.connection),
             "job": dict(self.job),
             "health": health,
             "library": {
+                "revision": library_revision,
                 "total": len(records),
                 "media": sum(media_kind(r) != "text" for r in records),
                 "videos": sum(media_kind(r) == "video" for r in records),
@@ -427,7 +485,8 @@ class Runtime:
                     continue
             matches.append(record)
         matches.sort(key=lambda r: r["id"], reverse=True)
-        return {"posts": [self.post_view(r) for r in matches[offset:offset+limit]], "total": len(matches), "offset": offset, "limit": limit}
+        return {"posts": [self.post_view(r) for r in matches[offset:offset+limit]], "total": len(matches), "offset": offset, "limit": limit,
+                "library_revision": self.store.revision, "active_channel": self.channels.active}
 
     async def post(self, message_id):
         record = self.store.records.get(message_id)
@@ -462,7 +521,9 @@ class Runtime:
         self.store._read_records()
         return self.store.messages_file
 
+    @mutation
     async def update_settings(self, incoming):
+        self.check_open()
         if self.job["running"] or self.auth_busy or self.library_busy:
             raise ValueError("Wait for the current operation to finish before changing settings.")
         self.auth_busy = True
@@ -483,19 +544,78 @@ class Runtime:
         if self.channels.active != "main":
             incoming.pop("channel", None)
         old_identity = tuple(self.settings.values.get(k) for k in ("api_id", "api_hash"))
-        result = self.settings.update(incoming)
-        result["channel"] = self.channel_settings()["channel"]
-        new_identity = tuple(self.settings.values.get(k) for k in ("api_id", "api_hash"))
+        proposed = self.settings.proposed(incoming)
+        new_identity = tuple(proposed.get(k) for k in ("api_id", "api_hash"))
         if old_identity != new_identity:
+            self.connection = {"authorized": False, "step": "disconnected"}
             if self.service:
                 await self.service.close()
                 self.service = None
-            self.connection = {"authorized": False, "step": "disconnected"}
-        elif self.service:
+        self.check_open()
+        result = self.settings.publish(proposed)
+        result["channel"] = self.channel_settings()["channel"]
+        if self.service:
             self.service.settings = self.channel_settings()
         return {"settings": result}
 
+    def _identity_stamp(self):
+        return self.channels.active, self.context_revision, self.get_service().capture_stamp()
+
+    @mutation
+    async def resolve_identity(self, payload):
+        if self.job["running"] or self.auth_busy or self.library_busy:
+            raise ValueError("Finish or stop the current operation before resolving a channel.")
+        if set(payload) != {"channel"}:
+            raise ValueError("Enter the original channel's current link.")
+        from .config import normalize_channel
+        locator = normalize_channel(payload["channel"])
+        if not locator:
+            raise ValueError("Enter the original channel's current link.")
+        self.library_busy = True
+        self.preflight_task = asyncio.current_task()
+        try:
+            stamp = self._identity_stamp()
+            target = await self.get_service().resolve_target(locator)
+            self.check_open()
+            if stamp != self._identity_stamp():
+                raise ValueError("The archive changed during resolution. Resolve the channel again.")
+            token = secrets.token_urlsafe(32)
+            self._identity_tokens = {token: {"stamp": stamp, "target": target, "locator": locator}}
+            return {"token": token, "peer": {**target["identity"], "title": getattr(target["entity"], "title", "")},
+                    "matching_archives": self.get_service().matching_archives(target["identity"])}
+        finally:
+            self.library_busy = False
+            self.preflight_task = None
+
+    @mutation
+    async def confirm_identity(self, payload):
+        if self.job["running"] or self.auth_busy or self.library_busy:
+            raise ValueError("Finish or stop the current operation before confirming a channel.")
+        value = self._identity_tokens.get(payload.get("token"))
+        if payload.get("original_channel") is not True or not value or value["stamp"] != self._identity_stamp():
+            raise ValueError("Confirm the original channel after resolving it again; this confirmation is stale or incomplete.")
+        self.library_busy = True
+        try:
+            peer, locator = value["target"]["identity"], value["locator"]
+            title = getattr(value["target"]["entity"], "title", "")
+            await self.channel_disk(lambda: self.store.bind_channel(peer["id"], title, locator, peer_kind=peer["kind"], confirmed=True))
+            # Keep the same token usable if locator publication fails after the
+            # durable binding; it can only finish this exact identity operation.
+            value["stamp"] = self._identity_stamp()
+            self.check_open()
+            if self.channels.active == "main":
+                self.settings.update({"channel": locator})
+            else:
+                self.channels.update_locator(self.channels.active, locator)
+            self.get_service().settings = self.channel_settings()
+            self._identity_tokens.clear()
+            return {"bound": True, "peer": peer, "channel": locator}
+        finally:
+            self.library_busy = False
+
+    @mutation
     async def authenticate(self, action, payload):
+        self.check_open()
         if self.job["running"] or self.auth_busy or self.library_busy:
             raise ValueError("Another operation is running. Wait for it to finish first.")
         self.auth_busy = True
@@ -508,6 +628,7 @@ class Runtime:
                 result = await service.send_code(str(payload.get("phone", "")))
             else:
                 result = await service.sign_in(code=str(payload.get("code", "")), password=str(payload.get("password", "")))
+            self.check_open()
             self.connection.update(result)
             self.connection["authorized"] = result.get("step") == "connected"
             return result
@@ -519,7 +640,9 @@ class Runtime:
         finally:
             self.auth_busy = False
 
+    @mutation
     async def start_job(self, payload):
+        self.check_open()
         if self.job["running"] or self.auth_busy or self.library_busy:
             raise ValueError("An operation is already running. Stop it or wait for it to finish.")
         mode = payload.get("mode")
@@ -540,14 +663,32 @@ class Runtime:
                 raise ValueError("Connect your Telegram account in Settings before starting a sync.")
             if not self.channel_settings().get("channel"):
                 raise ValueError("Add a channel in Settings first.")
+        target = None
+        if mode != "verify":
+            self.library_busy = True
+            self.preflight_task = asyncio.current_task()
+            self.verify_cancel.clear()
+            expected = self.channels.active, self.context_revision
+            try:
+                target = await self.get_service().preflight()
+                self.check_open()
+                if self.verify_cancel.is_set() or asyncio.current_task().cancelling() or expected != (self.channels.active, self.context_revision):
+                    raise ValueError("Capture preflight was stopped or its archive changed. No capture started.")
+                if target["matching_archives"]:
+                    return {"capture_started": False, "existing_archive_ids": target["matching_archives"],
+                            "existing_archive_id": target["matching_archives"][0] if len(target["matching_archives"]) == 1 else None}
+            finally:
+                self.preflight_task = None
+                self.library_busy = False
+        self.check_open()
         self.job = {"running": True, "status": "running", "phase": "starting", "mode": mode,
                     "message": "Starting archive check…" if mode == "verify" else "Preparing your archive…",
                     "processed": 0, "added": 0, "updated": 0, "media_downloaded": 0, "media_failed": 0}
         self.verify_cancel.clear()
-        self.task = asyncio.create_task(self._run_job(mode, start, end))
-        return {"job": dict(self.job)}
+        self.task = asyncio.create_task(self._run_job(mode, start, end, target))
+        return {"capture_started": True, "job": dict(self.job)}
 
-    async def _run_job(self, mode, start, end):
+    async def _run_job(self, mode, start, end, target=None):
         try:
             if self.verify_cancel.is_set():
                 self.job.update({"status": "cancelled", "phase": "finished", "message": "Stopped before starting. Your archive is unchanged."})
@@ -558,7 +699,7 @@ class Runtime:
                 self.job.update({"result": result, "status": "cancelled" if cancelled else "completed" if result["ok"] else "warning", "phase": "finished",
                                  "message": "Archive check stopped." if cancelled else "Archive check passed." if result["ok"] else "Archive check finished. Some items need attention."})
             else:
-                await self.get_service().run(mode, start=start, end=end)
+                await self.get_service().run(mode, start=start, end=end, target=target)
         except asyncio.CancelledError:
             self.job.update({"status": "cancelled", "message": "Stopped. Saved posts are kept."})
         except Exception as exc:
@@ -571,6 +712,9 @@ class Runtime:
             self.job["running"] = False
 
     async def stop_job(self):
+        if self.preflight_task is not None:
+            self.verify_cancel.set()
+            self.preflight_task.cancel()
         if self.job["running"]:
             self.verify_cancel.set()
             if self.service:
@@ -578,8 +722,31 @@ class Runtime:
             self.job.update({"phase": "stopping", "message": "Stopping safely. Keeping completed downloads and saved posts…"})
         return {"job": dict(self.job)}
 
+    def check_open(self):
+        if self.closing:
+            raise ValueError("The application is closing. Reopen it before starting another operation.")
+
     async def _close(self):
+        self.closing = True  # admission closes before the first await
+        if self._close_task is None or self._close_task.done() and self._close_task.exception() is not None:
+            self._close_task = asyncio.create_task(self._drain_close())
+        cancelled = False
+        while not self._close_task.done():
+            try:
+                await asyncio.shield(self._close_task)
+            except asyncio.CancelledError:
+                cancelled = True
+        self._close_task.result()
+        if cancelled:
+            raise asyncio.CancelledError()
+
+    async def _drain_close(self):
         await self.stop_job()
+        admitted = list(self._mutations)
+        for task in admitted:
+            task.cancel()
+        if admitted:
+            await asyncio.gather(*admitted, return_exceptions=True)
         while self.library_busy or self.auth_busy:
             await asyncio.sleep(0.02)
         if self.task and not self.task.done():
@@ -587,21 +754,18 @@ class Runtime:
             # lock while it is still publishing a checkpoint or backup.
             await asyncio.gather(self.task, return_exceptions=True)
         if self.service:
-            try:
-                await asyncio.wait_for(self.service.close(), timeout=15)
-            except (Exception, asyncio.CancelledError):
-                pass
+            await self.service.close()
         await self.loop.shutdown_default_executor()
         self.release_channel_lock()
 
     def close(self):
-        try:
-            self.call(self._close(), timeout=None)
-        finally:
-            self.loop.call_soon_threadsafe(self.loop.stop)
-            self.thread.join(timeout=5)
-            if not self.thread.is_alive():
-                self.loop.close()
+        if self.loop.is_closed():
+            return
+        self.call(self._close(), timeout=None)
+        self.loop.call_soon_threadsafe(self.loop.stop)
+        self.thread.join(timeout=5)
+        if not self.thread.is_alive():
+            self.loop.close()
 
 
 class LocalServer(ThreadingHTTPServer):
@@ -623,11 +787,16 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         pass
 
+    def handle_one_request(self):
+        self._response_committed = False
+        return super().handle_one_request()
+
     @property
     def app(self):
         return self.server.runtime
 
     def end_headers(self):
+        self._response_committed = True
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("X-Frame-Options", "DENY")
@@ -647,6 +816,9 @@ class Handler(BaseHTTPRequestHandler):
             return False
 
     def json_response(self, data, status=200, *, indent=None):
+        if getattr(self, "_response_committed", False):
+            self.close_connection = True
+            return
         body = json.dumps(data, ensure_ascii=False, indent=indent).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
@@ -721,7 +893,9 @@ class Handler(BaseHTTPRequestHandler):
                 run_id = params.get("run", [None])[-1]
                 self.send_evidence(run_id)
             elif re.fullmatch(r"/api/media/\d+", path):
-                self.send_file(self.library_call(self.app.media(int(path.rsplit("/", 1)[1]))), media=True)
+                file = self.library_call(self.app.media(int(path.rsplit("/", 1)[1])))
+                download = file.name if parse_qs(urlparse(self.path).query).get("download") == ["1"] else None
+                self.send_file(file, media=True, download=download)
             elif path == "/api/export":
                 self.send_file(self.library_call(self.app.export()), download="messages_all.json")
             elif path == "/favicon.ico":
@@ -768,6 +942,10 @@ class Handler(BaseHTTPRequestHandler):
                 result = self.library_call(self.app.update_settings(payload))
             elif path in {"/api/channels", "/api/channels/select"}:
                 result = self.app.call(self.app.channel_action(self.channel_key(), payload, add=path == "/api/channels"))
+            elif path == "/api/channels/resolve":
+                result = self.library_call(self.app.resolve_identity(payload))
+            elif path == "/api/channels/confirm":
+                result = self.library_call(self.app.confirm_identity(payload))
             elif path in {"/api/connect", "/api/login/code", "/api/login/verify"}:
                 result = self.library_call(self.app.authenticate(path.rsplit("/", 1)[1], payload))
             elif path == "/api/jobs":
@@ -848,6 +1026,7 @@ class Handler(BaseHTTPRequestHandler):
                 while remaining > 0:
                     chunk = file.read(min(1024 * 1024, remaining))
                     if not chunk:
-                        break
+                        self.close_connection = True
+                        raise OSError("The file ended before the advertised content length.")
                     self.wfile.write(chunk)
                     remaining -= len(chunk)

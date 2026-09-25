@@ -10,6 +10,12 @@ from .config import normalize_channel
 from .storage import StoreError, _atomic_json, _decode
 
 
+class CatalogueSaveError(StoreError):
+    def __init__(self, message, publication):
+        super().__init__(message)
+        self.publication = publication
+
+
 class Channels:
     def __init__(self, root):
         self.root = Path(root).resolve()
@@ -70,7 +76,25 @@ class Channels:
         current = hashlib.sha256(self.path.read_bytes()).hexdigest() if self.path.exists() else None
         if current != self.digest:
             raise StoreError("The channel list changed outside the app. Reopen the app before continuing.")
-        data = _atomic_json(self.path, values)
+        try:
+            data = _atomic_json(self.path, values)
+        except (StoreError, OSError) as exc:
+            try:
+                if self.path.is_symlink():
+                    raise StoreError("Channel list became a symbolic link")
+                disk = self.path.read_bytes() if self.path.exists() else None
+                observed = _decode(disk, "The saved channel list") if disk is not None else {"version": 1, "active": "main", "channels": {}}
+                self._validate(observed)
+                digest = hashlib.sha256(disk).hexdigest() if disk is not None else None
+                publication = "published" if observed == values else "old" if digest == self.digest else "unknown"
+                if publication != "unknown":
+                    self.values, self.digest = observed, digest
+            except (OSError, StoreError, ValueError, TypeError):
+                publication = "unknown"
+            message = ("The channel list was published, but its durability could not be confirmed. Its archive folder was retained."
+                       if publication == "published" else f"The channel list could not be saved: {exc}"
+                       if publication == "old" else "Channel list publication is uncertain. The archive folder was retained; reopen before continuing.")
+            raise CatalogueSaveError(message, publication) from exc
         self.values, self.digest = values, hashlib.sha256(data).hexdigest()
 
     def add(self, channel, primary):
@@ -91,12 +115,13 @@ class Channels:
         values["channels"][key] = {"channel": channel}
         try:
             self._save(values)
-        except BaseException:
-            # Only remove this call's new, still-empty directory on failure.
-            try:
-                folder.rmdir()
-            except OSError:
-                pass
+        except CatalogueSaveError as exc:
+            # Roll back only after positively observing the previous catalogue.
+            if exc.publication == "old":
+                try:
+                    folder.rmdir()
+                except OSError:
+                    pass
             raise
         return key, True
 
@@ -106,3 +131,9 @@ class Channels:
             values = copy.deepcopy(self.values)
             values["active"] = key
             self._save(values)
+
+    def update_locator(self, key, channel):
+        self.folder(key)
+        values = copy.deepcopy(self.values)
+        values["channels"][key]["channel"] = normalize_channel(channel)
+        self._save(values)

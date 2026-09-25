@@ -1,0 +1,28 @@
+{
+  "verified_at": "2026-09-19T07:28:13.538756+00:00",
+  "final_sha256": "9efd29a1a7eba06c433bbfa9d275e859c0555c2b8c7dac6440ade2cd2eeb8257",
+  "confirmed_bugs": 26,
+  "severity_counts": {
+    "P1": 1,
+    "P2": 25
+  },
+  "original_findings": 27,
+  "dispositions": {
+    "Confirmed": 26,
+    "Merged into another confirmed finding": 1,
+    "Rejected": 0,
+    "Unverified": 0
+  },
+  "source_files_and_modes_unchanged": 49,
+  "original_reports_unchanged": 8,
+  "git_head_unchanged": true,
+  "git_index_matches_launch": true,
+  "original_working_status_unchanged": true,
+  "document_local_links_and_line_numbers_valid": true,
+  "probe_cases_passed": 7,
+  "synthesis_files": [
+    "bug-audit/evidence/synthesis-probe-results.json",
+    "bug-audit/evidence/synthesis-probes.py",
+    "bug-audit/FINAL.md"
+  ]
+}

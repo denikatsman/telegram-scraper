@@ -234,6 +234,9 @@ def test_stop_before_job_starts_cannot_be_lost(application):
     app = application[0]
     app.connection = {"authorized": True, "step": "connected"}
     app.settings.values["channel"] = "@example"
+    from test_engine import Client
+    app.get_service()._client = Client()
+    app.store.bind_channel(123, "Fixture", "@example", peer_kind="channel", confirmed=True)
 
     async def stop_immediately():
         await app.start_job({"mode": "sync"})
@@ -241,7 +244,7 @@ def test_stop_before_job_starts_cannot_be_lost(application):
         await app.task
 
     app.call(stop_immediately())
-    assert app.service is None
+    assert app.service._run_id is None and not app.evidence.path.exists()
     assert app.job["status"] == "cancelled"
     assert not app.job["running"]
 

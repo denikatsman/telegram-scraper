@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "telegram-scraper"
-version = "1.3.1"
+version = "1.3.4"
 description = "Telegram Scraper: save and search Telegram messages, videos and files locally"
 readme = "README.md"
 requires-python = ">=3.10"

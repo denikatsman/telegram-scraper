@@ -86,34 +86,24 @@ def build(output, library):
 
 
 def install_shortcut(bundle):
-    """Keep the actual app inside the project; Applications holds a Finder alias."""
+    """Compatibility name: publish the verified app into Applications."""
     source = Path(__file__).resolve().parents[1]
-    shortcut = Path.home() / "Applications" / "telegram-scraper.app"
-    shortcut.parent.mkdir(parents=True, exist_ok=True)
-    if bundle == shortcut:
-        raise SystemExit("Build the app inside the project before installing its shortcut.")
-    temporary = shortcut.with_name(f".telegram-scraper-shortcut-{uuid.uuid4().hex}.alias")
-    try:
-        executable = bundle / "Contents" / "MacOS" / "telegram-scraper"
-        subprocess.run([str(executable), "--make-alias", str(bundle), str(temporary)], check=True)
-        if shortcut.exists() or shortcut.is_symlink():
-            backups = source / "work" / "app-backups"
-            backups.mkdir(parents=True, exist_ok=True)
-            shortcut.rename(backups / f"telegram-scraper-shortcut-{uuid.uuid4().hex[:8]}.alias")
-        temporary.rename(shortcut)
-    finally:
-        temporary.unlink(missing_ok=True)
-    subprocess.run(["/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister",
-                    "-f", str(bundle)], check=True)
-    print(f"Applications shortcut: {shortcut}")
+    result = subprocess.run([sys.executable, str(source / "tools/install-app.py"), str(bundle),
+                    "--name", "telegram-scraper", "--bundle-id", "local.telegram-scraper.desktop"],
+                   check=False)
+    if result.returncode == 2:
+        print("The built app was installed; its receipts need attention. Retry installation with this same build.", file=sys.stderr)
+    elif result.returncode:
+        raise subprocess.CalledProcessError(result.returncode, result.args)
+    return result.returncode
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, default=Path(__file__).resolve().parents[1] / "telegram-scraper.app")
     parser.add_argument("--data-dir", type=Path, default=Path(__file__).resolve().parents[1])
-    parser.add_argument("--install-shortcut", action="store_true", help="add or refresh an Applications shortcut to this project’s app")
+    parser.add_argument("--install-shortcut", action="store_true", help="install the completed app in Applications (now the default)")
     args = parser.parse_args()
     bundle = build(args.output, args.data_dir)
-    if args.install_shortcut:
-        install_shortcut(bundle)
+    if args.install_shortcut or os.environ.get("MY_UTILITIES_AUTO_INSTALL", "1") != "0":
+        sys.exit(install_shortcut(bundle))

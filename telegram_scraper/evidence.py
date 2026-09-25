@@ -22,7 +22,7 @@ import threading
 import time
 import uuid
 
-from .storage import OperationCancelled, StoreError
+from .storage import OperationCancelled, StoreError, Store, retained_records, _decode, _records
 
 
 SCHEMA_VERSION = 1
@@ -262,13 +262,36 @@ class EvidenceStore:
                 **{name: connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0]
                    for name, table in (("observations", "observations"), ("runs", "runs"), ("events", "run_events"), ("occurrences", "occurrences"))}}
 
-    def validate(self, cancel=None) -> dict:
+    def _references(self, records, channel, connection):
+        for message_id, label, record in retained_records(records):
+            reference = record.get("source_observation_id")
+            if reference is None:
+                continue
+            if connection is None:
+                raise EvidenceError(f"{label}: required source evidence database is missing. Restore it before capture; it was not recreated.")
+            row = connection.execute("SELECT * FROM observations WHERE observation_id=?", (reference,)).fetchone() if type(reference) is int else None
+            expected_channel = record.get("source_channel_id") or (channel or {}).get("id")
+            if (row is None or row["kind"] != "message" or row["subject_id"] != str(message_id)
+                    or expected_channel is not None and row["channel_id"] != expected_channel
+                    or "raw" in record and _json(record["raw"]) != row["payload_json"]):
+                raise EvidenceError(f"{label}: source observation {reference} does not match its saved message, channel, kind or raw payload.")
+
+    def validate(self, cancel=None, *, records=None, channel=None) -> dict:
         """Check existing evidence without creating, migrating, or repairing files."""
         with self._mutex:
             if cancel and cancel():
                 raise OperationCancelled("Evidence verification was stopped.")
             self._safe_path()
+            if records is None:
+                store = Store(self.root)
+                try:
+                    store._check_layout()
+                    records = _records(_decode(store.messages_file.read_bytes(), "messages_all.json"), "messages_all.json") if store.messages_file.exists() else {}
+                    channel = store.channel_info()
+                except (StoreError, OSError) as exc:
+                    raise EvidenceError(f"Source references could not be checked: {exc}") from exc
             if not self.path.exists():
+                self._references(records, channel, None)
                 if any(Path(str(self.path) + suffix).exists() for suffix in ("-journal", "-wal", "-shm")):
                     raise EvidenceError("Evidence journal files exist but the database is missing. Restore the database before capturing more posts.")
                 return {"ok": True, "exists": False, "schema_version": SCHEMA_VERSION, "observations": 0, "runs": 0, "events": 0, "occurrences": 0}
@@ -281,6 +304,7 @@ class EvidenceStore:
                 connection.execute("BEGIN")
                 self._check_schema(connection)
                 result = self._deep_check(connection, cancel)
+                self._references(records, channel, connection)
                 self._validated_signature = self._signature()
                 connection.rollback()
                 return result
@@ -578,6 +602,18 @@ class EvidenceStore:
             for row in connection.execute("SELECT * FROM observations WHERE kind='message' AND channel_id IS ? AND subject_id=? ORDER BY observation_id", (channel_id, str(message_id))):
                 occurrences = [self._occurrence(item) for item in connection.execute("SELECT * FROM occurrences WHERE observation_id=? ORDER BY occurrence_id", (row["observation_id"],))]
                 result.append(self._observation(row, occurrences))
+            return result
+
+    def primary_receipts(self, channel_id, message_id, descriptor, peer_kind):
+        with self._read() as connection:
+            if connection is None:
+                return []
+            result = []
+            for row in connection.execute("SELECT kind,payload_json FROM observations WHERE channel_id=? AND subject_id=? AND kind IN ('primary_media_intent','primary_media_file') ORDER BY observation_id DESC", (channel_id, str(message_id))):
+                receipt = json.loads(row["payload_json"])
+                if (receipt.get("schema_version") == 1 and receipt.get("descriptor") == descriptor
+                        and receipt.get("peer") == {"kind": peer_kind, "id": channel_id} and receipt.get("message_id") == message_id):
+                    result.append((row["kind"], receipt))
             return result
 
     def runs(self, limit: int = 100) -> list[dict]:

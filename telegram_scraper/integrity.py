@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 import re
 
 from .evidence import EvidenceStore, EvidenceError
-from .storage import OperationCancelled, StoreError
+from .storage import OperationCancelled, StoreError, retained_records
 
 
 _HEX = r"[0-9a-f]{64}"
@@ -38,7 +38,43 @@ def _json(path):
                       parse_constant=lambda value: (_ for _ in ()).throw(ValueError(value)))
 
 
-def verify_extended(root, cancel=None, report=None) -> dict:
+def check_primary_receipt(receipt, label, lookup, issues):
+    if not isinstance(receipt, dict):
+        issues.append(f"{label}: invalid primary media receipt.")
+        return
+    path, size, digest = receipt.get("path"), receipt.get("size"), receipt.get("sha256")
+    parts = PurePosixPath(path).parts if isinstance(path, str) else ()
+    if (receipt.get("schema_version") != 1 or len(parts) != 3 or parts[:2] != ("telegram_data", "media")
+            or ".." in parts or "\\" in path or "\x00" in path
+            or type(size) is not int or size <= 0 or not isinstance(digest, str) or not re.fullmatch(_HEX, digest)
+            or not isinstance(receipt.get("descriptor"), dict)):
+        issues.append(f"{label}: unsafe or invalid primary media receipt.")
+        return
+    actual = lookup(path)
+    if actual is None:
+        issues.append(f"{label}: saved primary media is missing or unsafe ({path}).")
+    elif actual != (size, digest):
+        issues.append(f"{label}: primary media checksum or size does not match ({path}).")
+
+
+def check_primary_evidence(evidence, lookup, issues, limitations, cancel=None, label="Source"):
+    with evidence._read() as connection:
+        if connection is None:
+            return
+        for row in connection.execute("SELECT observation_id,kind,payload_json FROM observations WHERE kind IN ('primary_media_file','primary_media_intent')"):
+            _check_cancel(cancel)
+            receipt = json.loads(row["payload_json"])
+            if row["kind"] == "primary_media_file":
+                check_primary_receipt(receipt, f"{label} observation {row['observation_id']}", lookup, issues)
+            elif not isinstance(receipt, dict):
+                issues.append(f"{label}: invalid primary media intent.")
+            # An intent alone is not a claim that publication completed.
+        incomplete = connection.execute("SELECT COUNT(*) FROM observations i WHERE kind='primary_media_intent' AND NOT EXISTS (SELECT 1 FROM observations c WHERE c.kind='primary_media_file' AND c.payload_json=i.payload_json)").fetchone()[0]
+        if incomplete:
+            limitations.append(f"{label}: {incomplete} primary acquisition intent(s) have no completion receipt; missing destinations alone do not prove loss of archived bytes.")
+
+
+def verify_extended(root, cancel=None, report=None, primary_cache=None) -> dict:
     root = Path(root).expanduser().resolve()
     data = root / "telegram_data"
     variants = data / "media" / "variants"
@@ -50,6 +86,7 @@ def verify_extended(root, cancel=None, report=None) -> dict:
     checked_files = {}
     manifest_paths = set()
     checked_receipts = set()
+    primary_cache = primary_cache if primary_cache is not None else {}
     states = Counter()
 
     def report_progress(message):
@@ -143,6 +180,22 @@ def verify_extended(root, cancel=None, report=None) -> dict:
         if actual is not None and actual != (digest, size):
             issues.append(f"{label}: media variant bytes do not match its saved checksum and size ({path.name}).")
 
+    def primary_lookup(value):
+        from .media import safe_primary_path
+        path = safe_primary_path(root, value)
+        if path is None or not path.is_file():
+            return None
+        key = path.relative_to(data).as_posix()
+        if key not in primary_cache:
+            digest, size = hashlib.sha256(), 0
+            with path.open("rb") as file:
+                while chunk := file.read(1024 * 1024):
+                    _check_cancel(cancel)
+                    digest.update(chunk)
+                    size += len(chunk)
+            primary_cache[key] = size, digest.hexdigest()
+        return primary_cache[key]
+
     try:
         _check_cancel(cancel)
         # Parent-directory symlinks can turn a safe-looking manifest path into a
@@ -212,6 +265,7 @@ def verify_extended(root, cancel=None, report=None) -> dict:
                     issues.append(f"Downloaded media variant has no immutable manifest: {path.name}.")
 
         if evidence_valid:
+            check_primary_evidence(evidence, primary_lookup, issues, limitations, cancel)
             # Use the evidence reader's short, read-only transaction. This runs
             # during an exclusive verification job; it never creates source data.
             with evidence._read() as connection:
@@ -243,7 +297,7 @@ def verify_extended(root, cancel=None, report=None) -> dict:
                 messages = _json(messages_path)
                 if not isinstance(messages, list):
                     raise ValueError()
-                for record in messages:
+                for message_id, label, record in retained_records(messages):
                     _check_cancel(cancel)
                     if not isinstance(record, dict):
                         raise ValueError()
@@ -261,6 +315,8 @@ def verify_extended(root, cancel=None, report=None) -> dict:
                         states[state] += 1
                         if state in {"downloaded", "reused"}:
                             check_receipt(receipt, f"Post {record.get('id')}")
+                        elif state == "primary_archive" and receipt.get("primary_receipt"):
+                            check_primary_receipt(receipt["primary_receipt"], label, primary_lookup, issues)
                         elif state not in _NO_FILE_STATES:
                             limitations.append(f"Post {record.get('id')}: a variant has an unrecognized capture state; no download was assumed.")
             except (OSError, ValueError, UnicodeError):

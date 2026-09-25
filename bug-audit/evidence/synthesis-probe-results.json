@@ -1,0 +1,110 @@
+{
+  "verified_at": "2026-09-19T07:17:52.156611+00:00",
+  "project_root": "/Users/xxx/GitHub/telegram-scraper",
+  "baseline": "/Users/xxx/GitHub/telegram-scraper/bug-audit/launch-20260919T063437Z/source-baseline.json",
+  "source_fingerprint_sha256": "242ed2ba644b15c5289ed13be6cd20403eb6f72a8e57a2b0e9f3cc881ae007c1",
+  "source_files_checked": 49,
+  "source_unchanged": true,
+  "original_report_sha256": {
+    "01-race-conditions.md": "d37660b74899ec3994520adfadc9ebe58502db0578781d6c5f2b024f1d3532f9",
+    "02-stale-state-lost-updates.md": "ae77672a516376d965cc96f759db1c6e85c6c76db366205f1dfdb3487592b03a",
+    "03-retries-idempotency.md": "6951fad9185090df2e3c7c4be6f1a0cf7069b1153a5b736d7da9f562f3414b0c",
+    "04-atomicity-partial-failure.md": "f9a19dc6345393263d41c1ba8b063852668b443a046f1fd135d98e39e928e48d",
+    "05-state-invariants.md": "aabbd31cb25e30dd9aeebc123143a175078505c3a6a9fadc7e5ce167084e79bc",
+    "06-lifecycle-cleanup.md": "156113e9f3f9f8be46e87f3048fd25b55d0598ca8969e49fbdae8074c2d6a592",
+    "07-persistence-migrations.md": "81302a6f340e3b4cd859da027376baff123a973af4ffce77af06fff96ca72645",
+    "08-error-handling-recovery.md": "b7ea93ce000ce118952fe338a0f867331a33f9836045a7f0fa0996d133f4e08b"
+  },
+  "original_reports_unchanged": true,
+  "environment": {
+    "python": "3.14.5 (main, May 10 2026, 10:21:34) [Clang 21.0.0 (clang-2100.0.123.102)]",
+    "telethon": "1.42.0"
+  },
+  "cases_passed": 7,
+  "results": [
+    {
+      "case": "first_photo_empty_sync",
+      "original_findings": [
+        "04-01",
+        "07-01"
+      ],
+      "status": "completed",
+      "processed": 0,
+      "message_index_exists": false,
+      "remaining_media": [
+        "telegram_data/media/variants",
+        "telegram_data/media/variants/41e5787e9f28562d07b891b1816b492309d646c0f2829743fa4963a9f9cc1d61.bin",
+        "telegram_data/media/variants/index",
+        "telegram_data/media/variants/index/32a78d97e99ad54f1408e1ba18824830c0b9ef1173309bca3fbe32058466c087-41e5787e9f28562d07b891b1816b492309d646c0f2829743fa4963a9f9cc1d61.json"
+      ],
+      "reopen_error": "Saved media exists but messages_all.json is missing. Restore the message file before syncing."
+    },
+    {
+      "case": "first_photo_cancelled",
+      "original_findings": [
+        "04-01",
+        "07-01"
+      ],
+      "status": "cancelled",
+      "processed": 0,
+      "message_index_exists": false,
+      "remaining_media": [
+        "telegram_data/media/variants",
+        "telegram_data/media/variants/index"
+      ],
+      "reopen_error": "Saved media exists but messages_all.json is missing. Restore the message file before syncing."
+    },
+    {
+      "case": "unreadable_subtree",
+      "original_findings": [
+        "08-01"
+      ],
+      "uid": 501,
+      "directory_read": "PermissionError",
+      "published_members": [
+        "messages_all.json"
+      ],
+      "verify_ok": true,
+      "issues": []
+    },
+    {
+      "case": "invalid_database",
+      "original_findings": [
+        "07-05"
+      ],
+      "zip_crc_ok": true,
+      "verify_ok": true,
+      "checked_archives": 1,
+      "issues": []
+    },
+    {
+      "case": "missing_database",
+      "original_findings": [
+        "07-05"
+      ],
+      "zip_crc_ok": true,
+      "verify_ok": true,
+      "checked_archives": 1,
+      "issues": []
+    },
+    {
+      "case": "source_only_invalid_database",
+      "original_findings": [
+        "07-05"
+      ],
+      "zip_crc_ok": true,
+      "verify_ok": true,
+      "checked_archives": 1,
+      "issues": []
+    },
+    {
+      "case": "invalid_deflate",
+      "original_findings": [
+        "08-04"
+      ],
+      "exception": "zlib.error",
+      "message": "Error -3 while decompressing data: invalid block type",
+      "later_backup_checked": false
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "source": {
+    "path": "/Users/xxx/GitHub/telegram-scraper/telegram-scraper.app",
+    "exists": true,
+    "symlink": false,
+    "signature": {
+      "Identifier": "local.telegram-scraper.desktop",
+      "CDHash": "ad91358e56ee76aa2cd5e1660f99a906b03b075d",
+      "TeamIdentifier": "not set"
+    },
+    "runningPids": []
+  },
+  "installed": {
+    "path": "/Users/xxx/Applications/telegram-scraper.app",
+    "exists": true,
+    "symlink": false,
+    "signature": {
+      "Identifier": "local.telegram-scraper.desktop",
+      "CDHash": "ad91358e56ee76aa2cd5e1660f99a906b03b075d",
+      "TeamIdentifier": "not set"
+    },
+    "runningPids": []
+  }
+}

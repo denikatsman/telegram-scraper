@@ -113,6 +113,10 @@ def service(tmp_path, client=None, records=(), report=None, **settings):
         store.upsert(record)
     if records:
         store.save()
+    if store.records and not store.channel_info():
+        # These synthetic legacy fixtures already have a deliberately confirmed
+        # origin. Unbound legacy setup is covered by the identity regressions.
+        store.bind_channel(123, "Fixture channel", "@fixture", peer_kind="channel", confirmed=True)
     updates = []
     config = {"api_id": 1, "api_hash": "fixture", "channel": "@fixture", "legacy_channel": "@fixture",
               "download_media": True, "archive_before_sync": False, "capture_context": False, **settings}
@@ -283,11 +287,65 @@ def test_short_download_is_not_published(tmp_path):
     async def run():
         message = Message(1, media=True)
         message.file.size = 1000
+        message.document.size = 1000
         engine, store, _ = service(tmp_path, Client([message]))
         result = await engine.run("sync")
         assert result["media_failed"] == 1
         assert not list(store.media_dir.iterdir())
         assert not store.records[1].get("media_file")
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("with_document, with_photo", [(True, True), (True, False), (False, True)])
+def test_web_preview_download_matches_telethon_media_selection(tmp_path, with_document, with_photo):
+    async def run():
+        from telethon.client.downloads import DownloadMethods
+        from telethon.tl import types
+        video_bytes, photo_bytes = b"fixture-video-bytes", b"jpg"
+        document = types.Document(id=100, access_hash=123, file_reference=b"doc-ref", date=DAY,
+                                  mime_type="video/mp4", size=len(video_bytes), dc_id=2,
+                                  attributes=[types.DocumentAttributeFilename("lesson.mp4")]) if with_document else None
+        photo = types.Photo(id=200, access_hash=456, file_reference=b"photo-ref", date=DAY,
+                            sizes=[types.PhotoSize("x", 100, 100, len(photo_bytes))], dc_id=2) if with_photo else None
+        preview = types.WebPage(id=300, url="https://youtu.be/fixture", display_url="youtu.be/fixture",
+                                hash=0, site_name="YouTube", document=document, photo=photo)
+        message = types.Message(id=1, peer_id=types.PeerChannel(123), date=DAY,
+                                message=preview.url, media=types.MessageMediaWebPage(webpage=preview))
+
+        class PreviewClient(Client):
+            # Keep real Telethon selection between a webpage's document/photo.
+            download_media = DownloadMethods.download_media
+
+            async def _download_document(self, media, file, date, thumb, progress_callback, msg_data):
+                self.downloads.append("document")
+                file.write(video_bytes)
+                await progress_callback(len(video_bytes), len(video_bytes))
+                return file
+
+            async def _download_photo(self, media, file, date, thumb, progress_callback):
+                self.downloads.append("photo")
+                file.write(photo_bytes)
+                await progress_callback(len(photo_bytes), len(photo_bytes))
+                return file
+
+        client = PreviewClient([message])
+        engine, store, _ = service(tmp_path, client)
+        result = await engine.run("sync")
+        assert result["media_failed"] == 0
+        assert result["media_downloaded"] == 1
+        record = store.records[1]
+        saved = store.media_path(record)
+        expected = video_bytes if with_document else photo_bytes
+        assert saved.read_bytes() == expected
+        assert record["media_size"] == len(expected)
+        assert record["media_sha256"] == hashlib.sha256(expected).hexdigest()
+        assert record["media_kind"] == ("video" if with_document else "photo")
+        assert record["media_mime"] == ("video/mp4" if with_document else "image/jpeg")
+        assert saved.suffix == (".mp4" if with_document else ".jpg")
+        assert record["raw"]["media"]["webpage"]["url"] == preview.url
+        again = await engine.run("sync")
+        assert again["media_downloaded"] == 0
+        assert len(client.downloads) == 1
     asyncio.run(run())
 
 

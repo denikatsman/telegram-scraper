@@ -98,7 +98,7 @@ class Settings:
         if "legacy_channel" in values and not isinstance(values["legacy_channel"], str):
             raise ConfigError("The original channel setting could not be read. Restore the settings file before syncing.")
 
-    def update(self, incoming: dict) -> dict:
+    def proposed(self, incoming: dict) -> dict:
         allowed = {"api_id", "api_hash", "channel", "download_media", "archive_before_sync", "capture_context"}
         if set(incoming) - allowed:
             raise ConfigError("Some settings were not recognized. Reload the page and try again.")
@@ -124,6 +124,13 @@ class Settings:
                     raise ConfigError("Choose whether to enable media downloads and backups.")
                 values[key] = incoming[key]
         values["schema_version"] = 1
+        self._validate(values)
+        return values
+
+    def update(self, incoming: dict) -> dict:
+        return self.publish(self.proposed(incoming))
+
+    def publish(self, values: dict) -> dict:
         self._validate(values)
         self.root.mkdir(parents=True, exist_ok=True)
         temporary = None

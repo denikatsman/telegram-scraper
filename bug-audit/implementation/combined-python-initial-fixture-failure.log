@@ -1,0 +1,34 @@
+..................F..................................................... [ 77%]
+.....................                                                    [100%]
+=================================== FAILURES ===================================
+_________ test_legacy_peer_kind_inference_requires_intact_saved_source _________
+
+tmp_path = PosixPath('/private/var/folders/hd/p8f3v5m105scc5yc00h0tv8w0000gn/T/pytest-of-xxx/pytest-35/test_legacy_peer_kind_inferenc0')
+
+    def test_legacy_peer_kind_inference_requires_intact_saved_source(tmp_path):
+        store = Store(tmp_path)
+        store.load()
+        store.save()
+        store.bind_channel(123, "original", "@original")
+        evidence = EvidenceStore(tmp_path)
+>       run = evidence.begin_run({"channel_id": 123})
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests/test_repairs_identity.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <telegram_scraper.evidence.EvidenceStore object at 0x1105b5240>
+metadata = {'channel_id': 123}
+
+    def begin_run(self, metadata: dict) -> str:
+        if not isinstance(metadata, dict):
+            raise EvidenceError("An evidence run needs its capture metadata.")
+        mode = metadata.get("mode")
+        if not isinstance(mode, str) or not mode.strip():
+>           raise EvidenceError("An evidence run needs its capture mode.")
+E           telegram_scraper.evidence.EvidenceError: An evidence run needs its capture mode.
+
+telegram_scraper/evidence.py:451: EvidenceError
+=========================== short test summary info ============================
+FAILED tests/test_repairs_identity.py::test_legacy_peer_kind_inference_requires_intact_saved_source
+1 failed, 92 passed in 41.29s

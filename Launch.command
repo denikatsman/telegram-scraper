@@ -1,6 +1,9 @@
 #!/bin/zsh
 set -eu
 cd -- "${0:A:h}"
+if [[ -d "$HOME/Applications/telegram-scraper.app" ]]; then
+  exec /usr/bin/open -a "$HOME/Applications/telegram-scraper.app"
+fi
 if [[ -d 'telegram-scraper.app' ]]; then
   exec /usr/bin/open -a "$PWD/telegram-scraper.app"
 fi

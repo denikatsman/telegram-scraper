@@ -44,6 +44,8 @@
   let totalResults = 0;
   let postsLoaded = false;
   let settingsDirty = false;
+  let settingsSnapshot = null;
+  let identityConfirmation = null;
   let lastRunning = false;
   let lastLibrarySignature = "";
   let selectedPost = null;
@@ -170,8 +172,9 @@
   async function task(name, action) {
     if (pending.has(name)) return;
     pending.add(name);
+    if (state) renderJob();
     renderControls();
-    try { return await action(); } finally { pending.delete(name); renderControls(); }
+    try { return await action(); } finally { pending.delete(name); if (state) renderJob(); renderControls(); }
   }
 
   function schedulePoll() {
@@ -195,9 +198,8 @@
         $("network-notice").hidden = true;
         if (lastRunning && !state.job?.running) clearToast();
         renderState();
-        const librarySignature = [state.active_channel, state.library?.total, state.library?.last_date, state.job?.added, state.job?.updated].join(":");
+        const librarySignature = JSON.stringify([state.active_channel || "main", state.library?.revision]);
         if (!postsLoaded || recovered || lastLibrarySignature !== librarySignature || (lastRunning && !state.job?.running)) await loadPosts({ preserve: postsLoaded });
-        lastLibrarySignature = librarySignature;
         lastRunning = Boolean(state.job?.running);
         return next;
       } catch (error) {
@@ -277,7 +279,8 @@
     $("setup-action").disabled = unavailable || running || starting || authPending || pending.has("settings");
     ["sync-button", "watch-button", "range-open", "verify-button"].forEach((id) => { $(id).disabled = unavailable || running || starting || pending.has("settings") || authPending; });
     $("watch-button").setAttribute("aria-pressed", String(running && (state?.job?.mode === "watch" || state?.job?.phase === "watching")));
-    $("stop-button").disabled = unavailable || pending.has("stop") || !running || state?.job?.status === "stopping" || state?.job?.phase === "stopping";
+    $("stop-button").disabled = !state || !online || pending.has("stop") || !(running || state?.capture_preflight || pending.has("job")) || state?.job?.status === "stopping" || state?.job?.phase === "stopping";
+    $("stop-button").hidden = !(running || state?.capture_preflight || pending.has("job"));
     text("stop-button", pending.has("stop") || state?.job?.status === "stopping" || state?.job?.phase === "stopping" ? "Stopping…" : "Stop safely");
     $("settings-fields").disabled = unavailable || running || pending.has("settings") || authPending;
     $("save-settings").disabled = unavailable || running || pending.has("settings") || authPending;
@@ -382,7 +385,7 @@
   }
 
   function renderJob() {
-    const job = state.job || {};
+    const job = state.capture_preflight || pending.has("job") ? { running: true, status: "running", phase: "resolving", message: "Resolving the channel before capture. Stop safely to cancel." } : state.job || {};
     const status = String(job.status || "");
     const meaningful = job.running || job.message || ["completed", "failed", "error", "stopped", "cancelled"].includes(status);
     $("job-panel").hidden = !meaningful || status === "idle";
@@ -399,7 +402,7 @@
     $("job-symbol").classList.toggle("running", Boolean(job.running && !watching));
     const symbol = watching && job.running ? "live" : job.running ? "sync" : failed || warning ? "info" : "check";
     $("job-symbol").replaceChildren(icon(symbol));
-    $("stop-button").hidden = !job.running;
+    $("stop-button").hidden = !(job.running || state?.capture_preflight || pending.has("job"));
     $("job-progress").hidden = !job.running;
     const details = [];
     [["processed", "processed"], ["added", "new posts"], ["updated", "updated"], ["media_downloaded", "files saved"], ["media_failed", "files need attention"], ["missing", "missing files"]].forEach(([key, label]) => {
@@ -451,6 +454,7 @@
   }
 
   async function loadPosts({ preserve = false, focus = false } = {}) {
+    const activeChannel = state?.active_channel || "main";
     const generation = ++postsGeneration;
     postsRequest?.abort();
     const controller = new AbortController();
@@ -467,7 +471,7 @@
       const query = new URLSearchParams();
       Object.entries(filters).forEach(([key, value]) => { if (value !== "") query.set(key, value); });
       const result = await api(`/api/posts?${query}`, undefined, { signal: controller.signal });
-      if (generation !== postsGeneration) return;
+      if (generation !== postsGeneration || controller.signal.aborted || activeChannel !== (state?.active_channel || "main") || result.active_channel !== activeChannel) return false;
       const posts = Array.isArray(result.posts) ? result.posts : [];
       totalResults = Number(result.total) || 0;
       postsLoaded = true;
@@ -491,6 +495,8 @@
         $("post-list").querySelector("button")?.focus({ preventScroll: true });
         $("results-label").scrollIntoView({ block: "start", behavior: "instant" });
       }
+      lastLibrarySignature = JSON.stringify([activeChannel, result.library_revision]);
+      return true;
     } catch (error) {
       if (controller.signal.aborted || generation !== postsGeneration) return;
       if (!preserve || !postsLoaded) showEmpty("error", error.message);
@@ -624,6 +630,8 @@
   }
 
   function resetChannelView() {
+    identityConfirmation = null;
+    $("existing-archives").replaceChildren();
     postsRequest?.abort();
     postsGeneration += 1;
     detailGeneration += 1;
@@ -653,6 +661,10 @@
     await task("channel", async () => {
       try {
         const result = await api(path, body);
+        if (result.existing_archive_ids?.length) {
+          offerExistingArchives(result.existing_archive_ids);
+          return;
+        }
         await refreshState();
         $("channel-dialog").close();
         $("channel-link").value = "";
@@ -679,7 +691,54 @@
     $("archive-before-sync").checked = settings.archive_before_sync !== false;
     $("capture-context").checked = settings.capture_context !== false;
     settingsDirty = false;
+    settingsSnapshot = editableSettings();
+    identityConfirmation = null;
+    $("channel-repair-locator").value = settings.channel || "";
+    $("confirm-channel").hidden = true;
+    feedback("identity-feedback", "");
     renderLoginStep();
+  }
+
+  function offerExistingArchives(ids) {
+    const context = state?.active_channel || "main";
+    const panel = $("existing-archives");
+    panel.replaceChildren(element("p", "", "This channel already has an archive. Capture has not started. Choose an archive to open."));
+    for (const id of ids) {
+      const entry = state?.channels?.find((item) => item.id === id);
+      const button = element("button", "button secondary", `Open existing archive: ${entry?.name || id}`);
+      button.type = "button";
+      button.addEventListener("click", () => {
+        if ((state?.active_channel || "main") !== context) return;
+        return changeChannel("/api/channels/select", { id });
+      });
+      panel.append(button);
+    }
+  }
+
+  async function resolveChannel() {
+    return task("channel", async () => {
+      identityConfirmation = null;
+      $("confirm-channel").hidden = true;
+      try {
+        const result = await api("/api/channels/resolve", { channel: $("channel-repair-locator").value.trim() }, { timeout: 45000 });
+        identityConfirmation = { token: result.token, channel: state?.active_channel || "main" };
+        feedback("identity-feedback", `${result.peer.title} · ${result.peer.kind} ${result.peer.id}. Confirm only if this is the original channel for these saved posts.${result.matching_archives.length ? " Other archives also use this channel; they will remain separate." : ""}`);
+        $("confirm-channel").hidden = false;
+      } catch (error) { feedback("identity-feedback", error.message, "error"); }
+    });
+  }
+
+  async function confirmChannel() {
+    if (!identityConfirmation || identityConfirmation.channel !== (state?.active_channel || "main")) return;
+    return task("channel", async () => {
+      try {
+        await api("/api/channels/confirm", { token: identityConfirmation.token, original_channel: true });
+        identityConfirmation = null;
+        $("confirm-channel").hidden = true;
+        await refreshState();
+        feedback("identity-feedback", "Original channel confirmed. Its current link is saved; you can now request Sync.");
+      } catch (error) { feedback("identity-feedback", error.message, "error"); }
+    });
   }
 
   async function saveSettings(event) {
@@ -693,13 +752,24 @@
     }
     await task("settings", async () => {
       try {
-        await api("/api/settings", { api_id: id ? Number(id) : "", api_hash: $("api-hash").value.trim(), channel: $("channel").value.trim(), download_media: $("download-media").checked, archive_before_sync: $("archive-before-sync").checked, capture_context: $("capture-context").checked });
+        const values = editableSettings();
+        const patch = Object.fromEntries(Object.entries(values).filter(([key, value]) => key === "api_hash" ? Boolean(value) : value !== settingsSnapshot?.[key]));
+        if (!Object.keys(patch).length) { feedback("settings-feedback", "No settings changed."); return; }
+        await api("/api/settings", patch);
+        settingsSnapshot = { ...values, api_hash: "" };
+        $("api-hash").value = "";
         settingsDirty = false;
         await refreshState();
         if (online) fillSettings();
         feedback("settings-feedback", "Settings saved on this computer.");
       } catch (error) { feedback("settings-feedback", error.message, "error"); }
     });
+  }
+
+  function editableSettings() {
+    const id = $("api-id").value.trim();
+    return { api_id: id ? Number(id) : "", api_hash: $("api-hash").value.trim(), channel: $("channel").value.trim(),
+      download_media: $("download-media").checked, archive_before_sync: $("archive-before-sync").checked, capture_context: $("capture-context").checked };
   }
 
   function renderLoginStep() {
@@ -800,7 +870,11 @@
     return task("job", async () => {
       try {
         clearToast();
-        await api("/api/jobs", { mode, ...extras });
+        const admission = await api("/api/jobs", { mode, ...extras }, { timeout: 45000 });
+        if (admission.capture_started === false) {
+          offerExistingArchives(admission.existing_archive_ids);
+          return false;
+        }
         await refreshState();
         if (mode === "watch") toast("Watching for new posts. Keep the archive server running to continue.");
         return true;
@@ -885,7 +959,9 @@
         const download = element("div", "media-download");
         const link = element("a", "button secondary compact", "Download file");
         link.prepend(icon("download"));
-        link.href = `${source}?download=1`;
+        const downloadURL = new URL(source, window.location.origin);
+        downloadURL.searchParams.set("download", "1");
+        link.href = downloadURL.pathname + downloadURL.search;
         link.download = post.media_name || `post-${post.id}`;
         download.append(element("span", "media-filename", post.media_name || `${singularNames[kind]} · original file`), link);
         body.append(download);
@@ -994,6 +1070,9 @@
   }
 
   document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => setView(button.dataset.view)));
+  $("resolve-channel").addEventListener("click", resolveChannel);
+  $("confirm-channel").addEventListener("click", confirmChannel);
+  $("channel-repair-locator").addEventListener("input", () => { identityConfirmation = null; $("confirm-channel").hidden = true; });
   $("kind-filter").addEventListener("change", (event) => setView(event.target.value));
   $("search-input").addEventListener("input", () => {
     clearTimeout(searchTimer);

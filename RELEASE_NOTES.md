@@ -1,4 +1,28 @@
-# Telegram Scraper 1.3.1 — validation and handoff
+# Telegram Scraper 1.3.4 — confirmed-bug repairs
+
+## 1.3.4 Archive recovery, capture lifecycle and interface consistency
+
+Repairs all 26 confirmed findings in `bug-audit/FINAL.md`, following the amended implementation plan. Backup checks now cover required source evidence and historical attachments. Capture preserves initialization and media receipts across cancellation or crashes; Watch orders overlapping observations explicitly and drains failures and cleanup. Typed channel identity supports deliberate legacy binding and locator repair, and duplicate capture offers a separate Open existing archive action. Settings save only changed fields, post refreshes use library revisions, attachment responses preserve URL scope and streaming failures, and installation retries repair incomplete receipts without repeating a completed swap.
+
+Automated verification and exact installed-build results are recorded in `bug-audit/PLAN.md`. These repairs use isolated synthetic libraries and loopback protocol fixtures; live Telegram and interactive macOS checks remain outstanding for this version.
+
+## 1.3.3 Video downloads attached to link previews
+
+Live inspection found YouTube link previews containing both a Telegram-provided MP4 document and a preview photo. Telethon downloads the document but exposes the photo through `Message.file`. The app consequently compared a full MP4 against the thumbnail's size, reported an incomplete attachment, and discarded that primary temporary download. Detailed media capture independently retained the MP4; two such saved files were verified against their recorded SHA256 hashes during the active run.
+
+The primary attachment now uses the same document's metadata for its size, type, name and extension. Real Telethon preview objects and its download-selection method reproduce the old failure and exercise combined video/photo, video-only and photo-only previews, exact saved bytes/checksums and reuse on another sync. The active run is left untouched; the correction takes effect after Stop, quit, reopen and another sync. External videos are downloaded only when Telegram supplies the media, without visiting YouTube.
+
+Validation: **242 tests and 30 subtests passed**. The fixed metadata also agrees with the actual captured Telegram objects for both affected posts. Live follow-up confirmed account sign-in and an advancing history capture; this brief inspection does not establish completion of the ongoing full-history run.
+
+## 1.3.2 Login with an expired saved session
+
+An expired Telegram session can retain old update cursors. Connecting with automatic catch-up enabled made Telethon request those updates before sign-in, interpret the authorization rejection as a logout, and disconnect while a login-code request was in flight. Telegram could deliver the code while the app returned HTTP 500 and stayed on the phone-number form. Connection setup now leaves automatic catch-up disabled; Watch still registers its handlers, requests catch-up and scans channel history after authorization. Interrupted operations also receive a specific retryable message instead of the generic internal-error response.
+
+The regression uses the installed Telethon implementation with a simulated network transport and temporary SQLite sessions. Before the fix, a session with old update state reproduced the exact HTTP 500 message after accepting the code request; a fresh session passed. The corrected flow reaches code entry, rejects an incorrect code without losing the challenge, and completes sign-in without changing the saved post index. No real login code was requested by these checks. Live account sign-in still needs a user retry after quitting and reopening the rebuilt app.
+
+Validation: **239 tests and 30 subtests passed** with the app's Python 3.14.5 and Telethon 1.42.0, including two-step login, Watch catch-up, cancellation, storage and desktop-backend checks.
+
+## 1.3.1 Project naming
 
 The app now uses **Telegram Scraper** for visible branding and `telegram-scraper` for its package, command, Mac app filename, launch link and system identifier. Existing saved libraries and login sessions remain compatible.
 

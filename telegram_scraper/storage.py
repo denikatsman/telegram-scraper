@@ -17,6 +17,7 @@ import tempfile
 import threading
 import uuid
 import zipfile
+import zlib
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
@@ -93,6 +94,23 @@ def _stable_raw(value: object) -> object:
     return value
 
 
+def retained_records(records):
+    """Walk current posts, retained revisions and attachment receipts together."""
+    def walk(record, message_id, label):
+        if not isinstance(record, dict):
+            raise StoreError(f"{label}: invalid retained record.")
+        yield message_id, label, record
+        for field in ("revisions", "previous_media"):
+            items = record.get(field, [])
+            if not isinstance(items, list):
+                raise StoreError(f"{label}: invalid {field} history.")
+            for index, item in enumerate(items, 1):
+                yield from walk(item, message_id, f"{label}, {field} {index}")
+    values = records.values() if isinstance(records, dict) else records
+    for record in values:
+        yield from walk(record, record.get("id"), f"Post {record.get('id')}")
+
+
 def _meaningful(record: dict) -> dict:
     keys = ("text", "date", "type", "action", "action_title", "edit_date", "media_id")
     result = {key: record.get(key) for key in keys}
@@ -115,6 +133,10 @@ def _fsync_directory(directory: Path) -> None:
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
+
+
+def _enumeration_error(error: OSError) -> None:
+    raise StoreError(f"Could not enumerate the complete library for backup: {error.filename or error}.") from error
 
 
 def _atomic_json(path: Path, value: object) -> bytes:
@@ -155,6 +177,12 @@ class Store:
         self._lock_fd: int | None = None
         self._lock_owner: int | None = None
         self._lock_depth = 0
+        self._revision_epoch = uuid.uuid4().hex
+        self._revision_counter = 0
+
+    @property
+    def revision(self):
+        return f"{self._revision_epoch}:{self._revision_counter}"
 
     def _check_layout(self) -> None:
         for directory in (self.data_dir, self.media_dir, self.archives_dir):
@@ -182,6 +210,7 @@ class Store:
         self.records = records
         self._disk_digest = digest
         self._loaded = True
+        self._revision_counter += 1
         return self.records
 
     def save(self) -> None:
@@ -217,6 +246,7 @@ class Store:
         old = self.records.get(message_id)
         if old is None:
             self.records[message_id] = incoming
+            self._revision_counter += 1
             return "added"
         merged = {**copy.deepcopy(old), **incoming}
         history = copy.deepcopy(old.get("revisions", []))
@@ -235,6 +265,7 @@ class Store:
         if old == merged:
             return "unchanged"
         self.records[message_id] = merged
+        self._revision_counter += 1
         return "updated"
 
     def media_path(self, record: dict) -> Path | None:
@@ -274,17 +305,54 @@ class Store:
             raise StoreError("The saved channel identity could not be read.") from exc
         if not isinstance(value, dict) or type(value.get("id")) is not int or not value["id"]:
             raise StoreError("The saved channel identity is invalid. Resolve it before syncing another channel.")
+        if "peer_kind" in value and value["peer_kind"] not in {"channel", "chat"}:
+            raise StoreError("The saved channel peer kind is invalid.")
         return value
 
-    def bind_channel(self, id: int, title: str, configured_channel: str, legacy_channel: str | None = None) -> None:
+    def channel_identity(self):
+        info = self.channel_info()
+        if not info:
+            return None
+        kind = info.get("peer_kind")
+        if kind is None:
+            from .identity import peer_identity
+            candidates = set()
+            records, _ = self._read_records()
+            objects = [(record.get("raw") or {}).get("peer_id") for _, _, record in retained_records(records)]
+            from .evidence import EvidenceStore, EvidenceError, _digest
+            evidence = EvidenceStore(self.root)
+            if evidence.path.exists():
+                with evidence._read() as connection:
+                    for row in connection.execute("SELECT payload_json,tl_bytes,payload_sha256 FROM observations WHERE kind='channel' AND subject_id=?", (str(info["id"]),)):
+                        if _digest(row[0], row[1]) != row[2]:
+                            raise EvidenceError("Saved channel evidence no longer matches its checksum. Restore it before resolving archive identity.")
+                        objects.append(json.loads(row[0]))
+            for obj in objects:
+                if obj:
+                    try:
+                        identity = peer_identity(obj)
+                    except (StoreError, TypeError, AttributeError):
+                        continue
+                    if identity["id"] == info["id"]:
+                        candidates.add(identity["kind"])
+            if len(candidates) == 1:
+                kind = candidates.pop()
+        return {"kind": kind, "id": info["id"]}
+
+    def bind_channel(self, id: int, title: str, configured_channel: str, legacy_channel: str | None = None,
+                     *, peer_kind=None, confirmed=False) -> None:
         if type(id) is not int or not id:
             raise StoreError("Telegram did not provide a valid channel identity.")
         existing = self.channel_info()
         if existing:
-            if existing["id"] != id:
+            identity = self.channel_identity()
+            if existing["id"] != id or peer_kind and identity["kind"] and peer_kind != identity["kind"]:
                 raise StoreError("This library belongs to a different Telegram channel. Use a separate library folder for this channel.")
-            if existing.get("title") != title:
-                _atomic_json(self.data_dir / "channel.json", {**existing, "title": title})
+            if peer_kind and identity["kind"] is None and not confirmed:
+                raise StoreError("Confirm this archive's original channel or group before capturing.")
+            values = {**existing, "title": title, **({"peer_kind": peer_kind} if peer_kind else {})}
+            if values != existing:
+                _atomic_json(self.data_dir / "channel.json", values)
             return
         records, _ = self._read_records()
         from .config import normalize_channel, ConfigError
@@ -296,9 +364,9 @@ class Store:
             # Storage also reads older identifiers. Keep the exact-match
             # boundary for those; current user input is validated in Settings.
             pass
-        if records and (not legacy or configured != legacy):
+        if records and not confirmed and (not legacy or configured != legacy):
             raise StoreError("This existing library has no saved channel identity. Reconnect its original configured channel before syncing.")
-        _atomic_json(self.data_dir / "channel.json", {"version": 1, "id": id, "title": title})
+        _atomic_json(self.data_dir / "channel.json", {"version": 1, "id": id, "title": title, **({"peer_kind": peer_kind} if peer_kind else {})})
 
     @contextmanager
     def lock(self) -> Iterator[None]:
@@ -342,8 +410,10 @@ class Store:
         self._check_layout()
         _cancelled(cancel)
         records, _ = self._read_records()
+        if not self.data_dir.exists():
+            return None
         files = []
-        for directory, directories, names in os.walk(self.data_dir, followlinks=False):
+        for directory, directories, names in os.walk(self.data_dir, followlinks=False, onerror=_enumeration_error):
             _cancelled(cancel)
             for name in sorted(directories + names):
                 path = Path(directory) / name
@@ -386,7 +456,7 @@ class Store:
                 os.fsync(output.fileno())
             _cancelled(cancel)
             current_files = set()
-            for directory, directories, names in os.walk(self.data_dir, followlinks=False):
+            for directory, directories, names in os.walk(self.data_dir, followlinks=False, onerror=_enumeration_error):
                 _cancelled(cancel)
                 for name in directories + names:
                     path = Path(directory) / name
@@ -471,26 +541,28 @@ class Store:
                 issues.append("There are no saved posts to verify yet.")
             result["checked_messages"] = len(local)
             from .integrity import verify_extended
-            extended = verify_extended(self.root, cancel=cancel, report=report)
+            local_media: dict[str, tuple[int, str]] = {}
+            extended = verify_extended(self.root, cancel=cancel, report=report, primary_cache=local_media)
             issues.extend(extended["issues"])
             result["limitations"] = extended["limitations"]
             result.update({key: value for key, value in extended.items() if key.startswith("checked_")})
             if extended["cancelled"]:
                 raise OperationCancelled("Source verification was stopped.")
-            local_media: dict[str, tuple[int, str]] = {}
-            for position, record in enumerate(local.values(), 1):
+            result["checked_media"] = len(local_media)
+            for position, (_, receipt_label, record) in enumerate(retained_records(local), 1):
                 _cancelled(cancel)
                 if not record.get("media_file"):
                     if record.get("media_status") in ("failed", "missing", "pending"):
-                        issues.append(f"Post {record['id']}: media has not been downloaded successfully.")
+                        if "," not in receipt_label:
+                            issues.append(f"{receipt_label}: media has not been downloaded successfully.")
                     continue
                 path = self.media_path(record)
                 if path is None:
-                    issues.append(f"Post {record['id']}: the media path is unsafe or unsupported.")
+                    issues.append(f"{receipt_label}: the media path is unsafe or unsupported.")
                     continue
                 name = path.relative_to(self.data_dir.resolve()).as_posix()
                 if not path.is_file():
-                    issues.append(f"Post {record['id']}: saved media is missing ({name}).")
+                    issues.append(f"{receipt_label}: saved media is missing ({name}).")
                     continue
                 if name not in local_media:
                     _report(report, f"Checking saved media for post {position} of {len(local)}")
@@ -502,11 +574,11 @@ class Store:
                                 size += len(chunk)
                                 digest.update(chunk)
                     except OSError:
-                        issues.append(f"Post {record['id']}: saved media could not be read ({name}).")
+                        issues.append(f"{receipt_label}: saved media could not be read ({name}).")
                         continue
                     local_media[name] = size, digest.hexdigest()
                     result["checked_media"] += 1
-                self._check_media_record(record, local_media[name], f"Post {record['id']}", issues)
+                self._check_media_record(record, local_media[name], receipt_label, issues)
 
             archives = sorted(self.archives_dir.glob("*.zip")) if self.archives_dir.exists() else []
             if not archives:
@@ -524,7 +596,11 @@ class Store:
                     issues.append(f"{label}: symbolic-link archives cannot be verified safely.")
                     continue
                 try:
-                    with zipfile.ZipFile(archive_path) as archive:
+                    with tempfile.TemporaryDirectory(prefix="telegram-backup-check-") as temporary, zipfile.ZipFile(archive_path) as archive:
+                        from .evidence import EvidenceStore
+                        backup_evidence = EvidenceStore(temporary)
+                        backup_evidence.data_dir.mkdir()
+                        issue_start = len(issues)
                         payload = None
                         channel_payload = None
                         media = {}
@@ -546,7 +622,9 @@ class Store:
                                 issues.append(f"{label}: contains a symbolic link ({name}).")
                             digest, size = hashlib.sha256(), 0
                             message_chunks = [] if name in {"messages_all.json", "channel.json"} else None
-                            with archive.open(info) as handle:
+                            from contextlib import nullcontext
+                            sink = backup_evidence.path.open("wb") if name == "evidence.sqlite3" else nullcontext(None)
+                            with archive.open(info) as handle, sink as database:
                                 while chunk := handle.read(_CHUNK):
                                     _cancelled(cancel)
                                     size += len(chunk)
@@ -554,6 +632,8 @@ class Store:
                                         digest.update(chunk)
                                     if message_chunks is not None:
                                         message_chunks.append(chunk)
+                                    if database is not None:
+                                        database.write(chunk)
                             if message_chunks is not None:
                                 if name == "messages_all.json":
                                     payload = b"".join(message_chunks)
@@ -564,6 +644,7 @@ class Store:
                         if payload is None and "evidence.sqlite3" not in seen:
                             raise StoreError("messages_all.json is missing from the backup")
                         archived = _records(_decode(payload, label), label) if payload is not None else {}
+                        channel = None
                         if channel_payload is not None:
                             channel = _decode(channel_payload, f"{label}: channel.json")
                             if not isinstance(channel, dict) or type(channel.get("id")) is not int or not channel["id"]:
@@ -574,15 +655,25 @@ class Store:
                                 if local_channel and channel["id"] != local_channel["id"]:
                                     issues.append(f"{label}: the channel identity differs from the current library.")
                                 archive_channel_id = channel["id"]
-                        for record in archived.values():
+                        if any(name in seen for name in ("evidence.sqlite3-journal", "evidence.sqlite3-wal", "evidence.sqlite3-shm")):
+                            issues.append(f"{label}: evidence database requires journal recovery; verification did not repair it.")
+                        else:
+                            try:
+                                backup_evidence.validate(cancel=cancel, records=archived, channel=channel)
+                                from .integrity import check_primary_evidence
+                                check_primary_evidence(backup_evidence, lambda path: media.get(path.removeprefix("telegram_data/")),
+                                                       issues, result["limitations"], cancel, label)
+                            except StoreError as exc:
+                                issues.append(f"{label}: {exc}")
+                        for _, receipt_label, record in retained_records(archived):
                             if record.get("media_file"):
                                 name = self._archive_media_name(record)
                                 if name is None:
-                                    issues.append(f"{label}: post {record['id']} has an unsafe media path.")
+                                    issues.append(f"{label}: {receipt_label} has an unsafe media path.")
                                 elif name not in media:
-                                    issues.append(f"{label}: post {record['id']} is missing its media ({name}).")
+                                    issues.append(f"{label}: {receipt_label} is missing its media ({name}).")
                                 else:
-                                    self._check_media_record(record, media[name], f"{label}, post {record['id']}", issues)
+                                    self._check_media_record(record, media[name], f"{label}, {receipt_label}", issues)
                         self._compare_records(cumulative, archived, label, issues, changes)
                         for name, evidence in cumulative_media.items():
                             if name not in media:
@@ -591,10 +682,11 @@ class Store:
                                 issues.append(f"{label}: previously archived media bytes changed ({name}).")
                         cumulative.update(archived)
                         cumulative_media.update(media)
-                        result["checked_archives"] += 1
+                        if len(issues) == issue_start:
+                            result["checked_archives"] += 1
                 except OperationCancelled:
                     raise
-                except (OSError, ValueError, RuntimeError, EOFError, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
+                except (OSError, ValueError, RuntimeError, EOFError, zlib.error, zipfile.BadZipFile, zipfile.LargeZipFile) as exc:
                     issues.append(f"{label}: backup could not be verified ({str(exc)}).")
             self._compare_records(cumulative, local, "Current library", issues, changes)
             if archive_channel_id is not None and local_channel is None:

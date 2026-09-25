@@ -1,0 +1,47 @@
+{
+  "verified_at": "2026-09-25T03:19:48.146827+00:00",
+  "version": "1.3.4",
+  "install_check": {
+    "status": "verified",
+    "installed": "/Users/xxx/Applications/telegram-scraper.app",
+    "bundleMatches": true,
+    "receiptsComplete": true,
+    "failedReceiptLocations": [],
+    "previousApp": "/Users/xxx/Library/Application Support/My Utilities/Updates/20260925T031859-7e11e6fa1216/telegram-scraper.app.previous",
+    "runningPids": [],
+    "signature": {
+      "Identifier": "local.telegram-scraper.desktop",
+      "CDHash": "3dc8531ee70ecac07feafe800ca310a41757be65",
+      "TeamIdentifier": "not set"
+    }
+  },
+  "attempt_id": "20260925T031859-7e11e6fa1216",
+  "previous_installed_bundle": "/Users/xxx/Library/Application Support/My Utilities/Updates/20260925T031859-7e11e6fa1216/telegram-scraper.app.previous",
+  "previous_source_bundle": "/Users/xxx/GitHub/telegram-scraper/work/app-backups/telegram-scraper-previous-6dc73699.app",
+  "previous_signatures_match": true,
+  "package_file_count": 18,
+  "source_and_built_and_installed_package_sha256": {
+    "__init__.py": "a2329c1405997a0d6f7eb783e533f79a1049fb6717bcda78859629fac544ae4d",
+    "__main__.py": "935a1c1166b0c1ea35a82256345000bf2c73ded718d77773bc27a71ecce28f7d",
+    "channels.py": "444379d6aee9d6ed49b2755b59b9c882a9cb5e57642aecec394a8e97fa7f157b",
+    "cli.py": "716401c742efd26a8cff9b66d69f5affc90bd27d722008a8c40fca29babd0471",
+    "config.py": "c332a38424be667ced0ae2077ce9869dd331f210eb68b16868bdc3d721bc6c88",
+    "engine.py": "75529d7026b16654b803ad7e3b2116dcaa39967bfbfff4ef74ab1767a3115437",
+    "enrichment.py": "6013e3b5ccda8610568252cee6074f5887235cccfc0174fddf7d1431f108f506",
+    "evidence.py": "b74c1587ee44e56fe2552f6d1995290b6e0b0f6559945c1f37b6c4128f141923",
+    "identity.py": "607e38020f9532c55f707e1332bc8054dc7418b3f55590b9e7decbbf5f5a56d2",
+    "instance.py": "b2968986f7ebc8e026e1d8b453211dc663269c1744724e36181778ad880d2ce1",
+    "integrity.py": "7effa16e2adc25f8379396b38914cff067b9887217d6b4e5bf90eba1a4bba8de",
+    "links.py": "933db644cc8bfefcdb8e4f16f00882487b0c81481c2187d049e3a929c37dd9b9",
+    "media.py": "4b67779f16163d6fb6e3e07dffd421e22dd496f60ba5185018d07d644fcffc85",
+    "server.py": "5058cd63d7c4cacc75168be4cee41fe28a7ea1c83868415ef7530474220800a4",
+    "static/app.css": "5493da906129fddcac3a7c63ff3a2259956e3d83e856ef675de9e3c29d1d124c",
+    "static/app.js": "81bbe608c5761f60aef38b9d3ac84a90e7db43788b5e0097cd87b937c2b2765c",
+    "static/index.html": "d801ecd9c87380cd858722bf342c9667427848361d9cb459facb1d4b0d44da85",
+    "storage.py": "743f9497ba759b58776a21c72462000aefa5a6c3772e456d5512d1fe80bd206b"
+  },
+  "launcher_library_preserved": true,
+  "relevant_running_processes": [],
+  "live_telegram_checked": false,
+  "interactive_desktop_checked": false
+}

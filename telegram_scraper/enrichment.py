@@ -18,6 +18,7 @@ from typing import Any
 import uuid
 
 from .storage import StoreError
+from .media import descriptor as media_descriptor
 
 
 class ContextCollector:
@@ -117,7 +118,7 @@ class ContextCollector:
                 raise
             await self._issue(summary, subject, area, type(exc).__name__, friendly_error(exc), context, error=True)
 
-    async def capture_message(self, entity: Any, message: Any) -> dict:
+    async def capture_message(self, entity: Any, message: Any, *, primary_receipt=None) -> dict:
         self._check()
         channel_id = self._id(entity) or self._id(getattr(message, "peer_id", None))
         context = {"channel_id": channel_id, "parent_channel_id": channel_id, "parent_message_id": int(message.id),
@@ -127,7 +128,7 @@ class ContextCollector:
         summary = self._summary()
         await self._attempt(summary, subject, "comments", context,
                             lambda: self._comments(entity, message, subject, context, summary))
-        await self._associated(entity, message, subject, context, summary, include_primary=False)
+        await self._associated(entity, message, subject, context, summary, include_primary=False, primary_receipt=primary_receipt)
         await self._observe("message_context_receipt", subject, summary, context)
         return summary
 
@@ -155,13 +156,13 @@ class ContextCollector:
         await self._observe("channel_profile_photo_receipt", subject, summary, context)
         return summary
 
-    async def _associated(self, entity, message, subject, context, summary, *, include_primary):
+    async def _associated(self, entity, message, subject, context, summary, *, include_primary, primary_receipt=None):
         await self._attempt(summary, subject, "poll", context,
                             lambda: self._poll(entity, message, subject, context, summary))
         await self._attempt(summary, subject, "reactions", context,
                             lambda: self._reactions(entity, message, subject, context, summary))
         await self._attempt(summary, subject, "media_variants", context,
-                            lambda: self._variants(message, subject, context, summary, include_primary=include_primary))
+                            lambda: self._variants(message, subject, context, summary, include_primary=include_primary, primary_receipt=primary_receipt))
 
     async def _comments(self, entity, message, subject, context, summary):
         from telethon.tl.functions.messages import GetRepliesRequest
@@ -355,6 +356,7 @@ class ContextCollector:
             if type(size).__name__ in {"PhotoStrippedSize", "PhotoPathSize"}:
                 mime = "application/octet-stream"
             variants.append({"identity": identity, "role": role, "object_id": int(obj.id),
+                             "descriptor": media_descriptor(obj, size),
                              "size_type": size_type, "constructor": type(size).__name__ if size is not None else type(obj).__name__,
                              "expected_bytes": expected, "mime_type": mime,
                              "width": getattr(size, "w", None), "height": getattr(size, "h", None),
@@ -370,7 +372,7 @@ class ContextCollector:
                     add(obj, f"{path}.photo_size", size)
         return variants
 
-    async def _variants(self, message, subject, context, summary, *, include_primary):
+    async def _variants(self, message, subject, context, summary, *, include_primary, primary_receipt=None):
         media = getattr(message, "media", None)
         constructor = type(media).__name__
         if constructor == "MessageMediaUnsupported":
@@ -392,7 +394,21 @@ class ContextCollector:
             self._check()
             descriptor = {k: v for k, v in item.items() if not k.startswith("_")}
             descriptor["context"] = dict(context)
-            if item["primary_managed_elsewhere"]:
+            if primary_receipt and item["descriptor"] == primary_receipt.get("descriptor"):
+                from .media import safe_primary_path
+                path = safe_primary_path(self.root, primary_receipt.get("path"))
+                try:
+                    valid = path is not None and await self._disk(self._checksum, path) == (primary_receipt["sha256"], primary_receipt["size"])
+                except (OSError, ValueError, KeyError):
+                    valid = False
+                if valid:
+                    summary["media_variants"].append({**descriptor, "state": "primary_archive", "primary_receipt": primary_receipt,
+                                                      "media_file": primary_receipt["path"]})
+                    summary["counts"]["variants_reused"] += 1
+                    continue
+            elif item["primary_managed_elsewhere"] and not primary_receipt:
+                # Compatibility for callers without a primary downloader. No
+                # saved bytes are claimed by this metadata-only legacy marker.
                 summary["media_variants"].append({**descriptor, "state": "primary_archive"})
                 continue
             if not self.download_media:

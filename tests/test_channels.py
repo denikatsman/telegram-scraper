@@ -67,7 +67,8 @@ def test_switching_preserves_each_channel_and_one_account(tmp_path):
     original = primary_library(tmp_path)
     runtime = Runtime(tmp_path)
     service = runtime.get_service()
-    sentinel = SimpleNamespace(disconnect=lambda: asyncio.sleep(0))
+    from test_engine import Client
+    sentinel = Client()
     service._client = sentinel
     service._phone = "+41790000000"
     service._phone_code_hash = "pending-challenge"
